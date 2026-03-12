@@ -23,7 +23,7 @@ services:
   # 仅内部网络可访问，不对外暴露端口
   # ==========================================================
   mysql:
-    image: mysql:${MYSQL_VERSION:-8.0}
+    image: mysql:${MYSQL_VERSION:-8.4.8}
     container_name: mysql
     <<: *default-restart
     environment:
@@ -259,7 +259,7 @@ services:
   # 对外暴露端口 3001
   # ==========================================================
   uptime-kuma:
-    image: louislam/uptime-kuma:${UPTIME_KUMA_VERSION:-2}
+    image: louislam/uptime-kuma:${UPTIME_KUMA_VERSION:-2.2.1}
     container_name: uptime-kuma
     <<: *default-restart
     ports:
