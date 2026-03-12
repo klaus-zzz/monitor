@@ -58,6 +58,8 @@ services:
     image: docker.1ms.run/prom/prometheus:${PROMETHEUS_VERSION:-v3.10.0}
     container_name: prometheus
     <<: *default-restart
+    # 以 root 用户运行，避免挂载目录权限问题
+    user: "0"
     ports:
       - "${PROMETHEUS_PORT:-9090}:9090"
     command:
@@ -161,6 +163,8 @@ services:
     image: docker.1ms.run/grafana/loki:${LOKI_VERSION:-3.6.7}
     container_name: loki
     <<: *default-restart
+    # 以 root 用户运行，避免挂载目录权限问题
+    user: "0"
     command:
       - "-config.file=/etc/loki/loki-config.yml"
     volumes:
@@ -223,6 +227,8 @@ services:
     image: docker.1ms.run/grafana/grafana:${GRAFANA_VERSION:-12.4.1}
     container_name: grafana
     <<: *default-restart
+    # 以 root 用户运行，避免挂载目录权限问题
+    user: "0"
     ports:
       - "${GRAFANA_PORT:-3000}:3000"
     environment:
@@ -265,16 +271,27 @@ services:
     <<: *default-restart
     ports:
       - "${UPTIME_KUMA_PORT:-3001}:3001"
+    environment:
+      - NODE_ENV=production
+      # 启用内置 MariaDB，替代默认的 SQLite
+      - UPTIME_KUMA_ENABLE_EMBEDDED_MARIADB=1
     volumes:
       - ./data/uptime-kuma:/app/data
+      - /etc/localtime:/etc/localtime:ro
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
     networks:
       - monitoring
+    # 内置 MariaDB 启动较慢，需要加大 start_period
     healthcheck:
-      test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://localhost:3001/api/entry-page || exit 1"]
-      interval: 15s
-      timeout: 5s
-      retries: 3
-      start_period: 20s
+      test: ["CMD", "extra/healthcheck"]
+      interval: 60s
+      timeout: 30s
+      retries: 5
+      start_period: 180s
+    security_opt:
+      - no-new-privileges:true
     logging: *default-logging
     deploy:
       resources:
