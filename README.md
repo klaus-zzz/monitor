@@ -53,7 +53,7 @@
 ### 1. 克隆项目并进入目录
 
 ```bash
-cd monitoring-stack
+cd monitor
 ```
 
 ### 2. 创建并编辑环境变量文件
@@ -333,7 +333,7 @@ docker compose up -d
 ## 目录结构
 
 ```
-monitoring-stack/
+monitor/
 ├── .env.example                          # 环境变量模板
 ├── .env                                  # 实际环境变量（不纳入版本控制）
 ├── .gitignore
