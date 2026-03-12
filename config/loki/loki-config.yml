@@ -1,0 +1,82 @@
+# ============================================================
+# Loki 日志聚合系统配置文件
+# 文档参考：https://grafana.com/docs/loki/latest/configure/
+# ============================================================
+
+# 禁用多租户认证（单租户模式）
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+  grpc_listen_port: 9096
+  log_level: info
+
+# 通用配置：简化存储路径设置
+common:
+  path_prefix: /loki
+  storage:
+    filesystem:
+      chunks_directory: /loki/chunks
+      rules_directory: /loki/rules
+  replication_factor: 1
+  ring:
+    instance_addr: 127.0.0.1
+    kvstore:
+      store: inmemory
+
+# Schema 配置：定义索引和存储格式
+schema_config:
+  configs:
+    - from: "2024-01-01"
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
+# 存储配置
+storage_config:
+  tsdb_shipper:
+    active_index_directory: /loki/tsdb-index
+    cache_location: /loki/tsdb-cache
+
+# Ingestion 限制配置
+limits_config:
+  ingestion_rate_mb: 10
+  ingestion_burst_size_mb: 20
+  max_streams_per_user: 10000
+  max_entries_limit_per_query: 5000
+  # 日志保留期限（默认 30 天 = 720h）
+  retention_period: 720h
+
+# Compactor 配置：负责日志压缩和保留策略执行
+compactor:
+  working_directory: /loki/compactor
+  compaction_interval: 10m
+  retention_enabled: true
+  retention_delete_delay: 2h
+  delete_request_store: filesystem
+
+# Ruler 配置：基于 LogQL 的告警规则评估，发送至 Alertmanager
+ruler:
+  storage:
+    type: local
+    local:
+      directory: /loki/rules
+  rule_path: /loki/rules-temp
+  alertmanager_url: http://alertmanager:9093
+  ring:
+    kvstore:
+      store: inmemory
+  enable_api: true
+  enable_alertmanager_v2: true
+  evaluation_interval: 1m
+
+# 查询调度器（单实例模式禁用）
+query_scheduler:
+  max_outstanding_requests_per_tenant: 2048
+
+# 前端配置
+frontend:
+  max_outstanding_per_tenant: 2048

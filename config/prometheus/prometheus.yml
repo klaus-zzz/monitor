@@ -1,0 +1,95 @@
+# ============================================================
+# Prometheus 主配置文件
+# 文档：https://prometheus.io/docs/prometheus/latest/configuration/configuration/
+# ============================================================
+
+global:
+  # 指标抓取间隔（默认 15 秒）
+  scrape_interval: 15s
+  # 告警规则评估间隔（默认 15 秒）
+  evaluation_interval: 15s
+
+# ------------------------------------------------------------
+# 告警管理器配置
+# ------------------------------------------------------------
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - "alertmanager:9093"
+
+# ------------------------------------------------------------
+# 告警规则文件
+# ------------------------------------------------------------
+rule_files:
+  - "/etc/prometheus/rules/*.yml"
+
+# ------------------------------------------------------------
+# 抓取目标配置
+# ------------------------------------------------------------
+scrape_configs:
+
+  # Prometheus 自身指标
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  # Node Exporter - 宿主机系统指标
+  - job_name: "node-exporter"
+    static_configs:
+      - targets: ["node-exporter:9100"]
+
+  # cAdvisor - 容器资源指标
+  - job_name: "cadvisor"
+    static_configs:
+      - targets: ["cadvisor:8080"]
+
+  # Pushgateway - 短生命周期任务推送指标
+  # honor_labels: true 保留推送方设置的标签，避免被 Prometheus 覆盖
+  - job_name: "pushgateway"
+    honor_labels: true
+    static_configs:
+      - targets: ["pushgateway:9091"]
+
+  # Blackbox Exporter - HTTP/TCP/ICMP 黑盒探测
+  # 通过 relabel_configs 实现多目标探测
+  # 在 targets 中添加需要探测的 URL 或地址
+  - job_name: "blackbox-http"
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    static_configs:
+      - targets:
+          # 示例探测目标，请根据实际需求修改
+          - "http://grafana:3000/api/health"
+          - "http://prometheus:9090/-/healthy"
+          - "http://prometheus-alert:8080/health"
+    relabel_configs:
+      # 将探测目标地址写入 __param_target 参数
+      - source_labels: [__address__]
+        target_label: __param_target
+      # 将探测目标地址保留为 instance 标签
+      - source_labels: [__param_target]
+        target_label: instance
+      # 将实际抓取地址替换为 Blackbox Exporter 地址
+      - target_label: __address__
+        replacement: "blackbox-exporter:9115"
+
+  # ----------------------------------------------------------
+  # 可选抓取目标（取消注释以启用）
+  # ----------------------------------------------------------
+
+  # MySQL Exporter - MySQL 数据库指标
+  # 需先通过 profiles 启用 mysql-exporter 服务：
+  #   docker compose --profile mysql-exporter up -d
+  # - job_name: "mysql-exporter"
+  #   static_configs:
+  #     - targets: ["mysql-exporter:9104"]
+
+  # Docker Engine Metrics - Docker 守护进程指标
+  # 需先在宿主机 /etc/docker/daemon.json 中配置：
+  #   { "metrics-addr": "127.0.0.1:9323" }
+  # 然后重启 Docker 守护进程
+  # - job_name: "docker-engine"
+  #   static_configs:
+  #     - targets: ["host.docker.internal:9323"]

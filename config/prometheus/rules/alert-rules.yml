@@ -1,0 +1,151 @@
+# ============================================================
+# Prometheus 告警规则配置
+# 包含：主机级、容器级、服务可用性、Prometheus 自身告警
+# 每条规则均配置 severity 标签和中文注解
+# ============================================================
+
+groups:
+
+  # ==========================================================
+  # 主机级告警规则
+  # ==========================================================
+  - name: host_alerts
+    rules:
+
+      # CPU 使用率超过 80% 持续 5 分钟
+      - alert: HostHighCpuUsage
+        expr: 100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "主机 CPU 使用率过高 (实例: {{ $labels.instance }})"
+          description: "主机 {{ $labels.instance }} 的 CPU 使用率已超过 80%，当前值为 {{ $value | printf \"%.1f\" }}%，持续超过 5 分钟。"
+
+      # 内存使用率超过 85% 持续 5 分钟
+      - alert: HostHighMemoryUsage
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "主机内存使用率过高 (实例: {{ $labels.instance }})"
+          description: "主机 {{ $labels.instance }} 的内存使用率已超过 85%，当前值为 {{ $value | printf \"%.1f\" }}%，持续超过 5 分钟。"
+
+      # 磁盘使用率超过 85%
+      - alert: HostHighDiskUsage
+        expr: (1 - (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay"})) * 100 > 85
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "主机磁盘使用率过高 (实例: {{ $labels.instance }})"
+          description: "主机 {{ $labels.instance }} 的磁盘挂载点 {{ $labels.mountpoint }} 使用率已超过 85%，当前值为 {{ $value | printf \"%.1f\" }}%。"
+
+      # 磁盘 IO 过高（IO 等待时间超过 30%）
+      - alert: HostHighDiskIO
+        expr: rate(node_disk_io_time_seconds_total[5m]) * 100 > 30
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "主机磁盘 IO 过高 (实例: {{ $labels.instance }})"
+          description: "主机 {{ $labels.instance }} 的磁盘 {{ $labels.device }} IO 利用率过高，当前值为 {{ $value | printf \"%.1f\" }}%，持续超过 5 分钟。"
+
+  # ==========================================================
+  # 容器级告警规则
+  # ==========================================================
+  - name: container_alerts
+    rules:
+
+      # 容器在 10 分钟内重启次数异常（>3 次）
+      - alert: ContainerFrequentRestart
+        expr: increase(container_last_seen{name!=""}[10m]) == 0 or rate(container_start_time_seconds{name!=""}[10m]) * 600 > 3
+        for: 0m
+        labels:
+          severity: critical
+        annotations:
+          summary: "容器频繁重启 (容器: {{ $labels.name }})"
+          description: "容器 {{ $labels.name }} 在过去 10 分钟内频繁重启，请检查容器日志排查原因。"
+
+      # 容器 CPU 使用率过高（超过分配限制的 80%）
+      - alert: ContainerHighCpuUsage
+        expr: (sum by(name) (rate(container_cpu_usage_seconds_total{name!=""}[5m]))) * 100 > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "容器 CPU 使用率过高 (容器: {{ $labels.name }})"
+          description: "容器 {{ $labels.name }} 的 CPU 使用率已超过 80%，当前值为 {{ $value | printf \"%.1f\" }}%，持续超过 5 分钟。"
+
+      # 容器内存使用率过高（超过限制的 85%）
+      - alert: ContainerHighMemoryUsage
+        expr: (container_memory_usage_bytes{name!=""} / container_spec_memory_limit_bytes{name!=""}) * 100 > 85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "容器内存使用率过高 (容器: {{ $labels.name }})"
+          description: "容器 {{ $labels.name }} 的内存使用率已超过限制的 85%，当前值为 {{ $value | printf \"%.1f\" }}%，持续超过 5 分钟。"
+
+  # ==========================================================
+  # 服务可用性告警规则
+  # ==========================================================
+  - name: availability_alerts
+    rules:
+
+      # 监控目标 down 超过 1 分钟
+      - alert: TargetDown
+        expr: up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "监控目标不可达 (实例: {{ $labels.instance }})"
+          description: "Prometheus 抓取目标 {{ $labels.job }}/{{ $labels.instance }} 已不可达，持续超过 1 分钟。请检查目标服务是否正常运行。"
+
+      # Blackbox HTTP 探测失败
+      - alert: HttpProbeFailed
+        expr: probe_success{job="blackbox-http"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "HTTP 探测失败 (目标: {{ $labels.instance }})"
+          description: "Blackbox Exporter 对 {{ $labels.instance }} 的 HTTP 探测失败，持续超过 1 分钟。请检查目标服务的可达性和响应状态。"
+
+  # ==========================================================
+  # Prometheus 自身告警规则
+  # ==========================================================
+  - name: prometheus_alerts
+    rules:
+
+      # Prometheus 配置重载失败
+      - alert: PrometheusConfigReloadFailed
+        expr: prometheus_config_last_reload_successful == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Prometheus 配置重载失败"
+          description: "Prometheus 最近一次配置重载失败，请检查配置文件语法是否正确。"
+
+      # Prometheus TSDB 压缩失败
+      - alert: PrometheusTSDBCompactionsFailed
+        expr: increase(prometheus_tsdb_compactions_failed_total[1h]) > 0
+        for: 0m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Prometheus TSDB 压缩失败"
+          description: "Prometheus TSDB 在过去 1 小时内出现压缩失败，失败次数增加了 {{ $value }} 次。这可能影响查询性能和存储效率。"
+
+      # Prometheus 告警规则评估失败
+      - alert: PrometheusRuleEvaluationFailed
+        expr: increase(prometheus_rule_evaluation_failures_total[5m]) > 0
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Prometheus 告警规则评估失败"
+          description: "Prometheus 在过去 5 分钟内出现规则评估失败，失败次数增加了 {{ $value }} 次。请检查告警规则配置是否正确。"

@@ -1,0 +1,436 @@
+# ============================================================
+# Docker 生产级监控体系 - Docker Compose 编排文件
+# 版本要求：Docker Compose v2.x+（使用 Compose Specification）
+# 使用方法：
+#   1. cp .env.example .env && 修改 .env 中的密码和配置
+#   2. docker compose up -d
+# ============================================================
+
+# 公共配置锚点：日志轮转
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+# 公共配置锚点：重启策略
+x-restart: &default-restart
+  restart: unless-stopped
+
+services:
+  # ==========================================================
+  # MySQL - Grafana 后端数据库
+  # 仅内部网络可访问，不对外暴露端口
+  # ==========================================================
+  mysql:
+    image: mysql:${MYSQL_VERSION:-8.0}
+    container_name: mysql
+    <<: *default-restart
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-please_change_me}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-grafana}
+      # 设置字符集为 utf8mb4
+      MYSQL_CHARSET: utf8mb4
+      MYSQL_COLLATION: utf8mb4_unicode_ci
+    volumes:
+      - ./data/mysql:/var/lib/mysql
+    networks:
+      - monitoring
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-please_change_me}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: "1.0"
+
+  # ==========================================================
+  # Prometheus - 指标采集与存储
+  # 对外暴露端口 9090
+  # ==========================================================
+  prometheus:
+    image: prom/prometheus:${PROMETHEUS_VERSION:-v3.10.0}
+    container_name: prometheus
+    <<: *default-restart
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=${PROMETHEUS_RETENTION_DAYS:-15d}"
+      - "--web.enable-lifecycle"
+      - "--web.enable-admin-api"
+    volumes:
+      - ./data/prometheus:/prometheus
+      - ./config/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./config/prometheus/rules:/etc/prometheus/rules:ro
+    networks:
+      - monitoring
+    healthcheck:
+      test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://localhost:9090/-/healthy || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: "1.0"
+
+  # ==========================================================
+  # Alertmanager - 告警管理（去重、分组、路由）
+  # 仅内部网络可访问，不对外暴露端口
+  # ==========================================================
+  alertmanager:
+    image: prom/alertmanager:${ALERTMANAGER_VERSION:-v0.31.1}
+    container_name: alertmanager
+    <<: *default-restart
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+      - "--storage.path=/alertmanager"
+    volumes:
+      - ./data/alertmanager:/alertmanager
+      - ./config/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    networks:
+      - monitoring
+    healthcheck:
+      test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://localhost:9093/-/healthy || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.5"
+
+  # ==========================================================
+  # PrometheusAlert - 告警消息转发（钉钉/企微/飞书等）
+  # 对外暴露端口 8080
+  # ==========================================================
+  prometheus-alert:
+    image: feiyu563/prometheus-alert:${PROMETHEUSALERT_VERSION:-v4.9.2}
+    container_name: prometheus-alert
+    <<: *default-restart
+    ports:
+      - "${PROMETHEUSALERT_PORT:-8080}:8080"
+    environment:
+      # 钉钉机器人配置
+      PA_DINGTALK_URL: ${PA_DINGTALK_URL:-}
+      PA_DINGTALK_SECRET: ${PA_DINGTALK_SECRET:-}
+      # 企业微信机器人配置
+      PA_WEIXIN_URL: ${PA_WEIXIN_URL:-}
+      # 飞书机器人配置
+      PA_FEISHU_URL: ${PA_FEISHU_URL:-}
+      PA_FEISHU_SECRET: ${PA_FEISHU_SECRET:-}
+      # Telegram 配置
+      PA_TG_TOKEN: ${PA_TG_TOKEN:-}
+      PA_TG_CHAT_ID: ${PA_TG_CHAT_ID:-}
+    volumes:
+      - ./data/prometheus-alert:/app/db
+    networks:
+      - monitoring
+    healthcheck:
+      test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://localhost:8080/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.5"
+
+  # ==========================================================
+  # Loki - 日志聚合系统
+  # 仅内部网络可访问，不对外暴露端口
+  # ==========================================================
+  loki:
+    image: grafana/loki:${LOKI_VERSION:-3.6.7}
+    container_name: loki
+    <<: *default-restart
+    command:
+      - "-config.file=/etc/loki/loki-config.yml"
+    volumes:
+      - ./data/loki:/loki
+      - ./config/loki/loki-config.yml:/etc/loki/loki-config.yml:ro
+      - ./config/loki/rules:/loki/rules:ro
+    networks:
+      - monitoring
+    healthcheck:
+      test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://localhost:3100/ready || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: "1.0"
+
+  # ==========================================================
+  # Alloy - 日志与指标采集代理
+  # 通过 Docker Socket 自动发现并采集容器日志
+  # ==========================================================
+  alloy:
+    image: grafana/alloy:${ALLOY_VERSION:-v1.14.0}
+    container_name: alloy
+    <<: *default-restart
+    command:
+      - "run"
+      - "/etc/alloy/config.alloy"
+      - "--server.http.listen-addr=0.0.0.0:12345"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./config/alloy/config.alloy:/etc/alloy/config.alloy:ro
+    networks:
+      - monitoring
+    depends_on:
+      loki:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://localhost:12345/ready || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "0.5"
+
+  # ==========================================================
+  # Grafana - 可视化与仪表盘平台
+  # 对外暴露端口 3000，使用 MySQL 作为后端数据库
+  # ==========================================================
+  grafana:
+    image: grafana/grafana:${GRAFANA_VERSION:-12.4.1}
+    container_name: grafana
+    <<: *default-restart
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+    environment:
+      # MySQL 后端数据库配置
+      GF_DATABASE_TYPE: mysql
+      GF_DATABASE_HOST: mysql:3306
+      GF_DATABASE_NAME: ${MYSQL_DATABASE:-grafana}
+      GF_DATABASE_USER: root
+      GF_DATABASE_PASSWORD: ${MYSQL_ROOT_PASSWORD:-please_change_me}
+      # 管理员密码
+      GF_SECURITY_ADMIN_PASSWORD: ${GF_SECURITY_ADMIN_PASSWORD:-please_change_me}
+    volumes:
+      - ./data/grafana:/var/lib/grafana
+      - ./config/grafana/provisioning:/etc/grafana/provisioning:ro
+    networks:
+      - monitoring
+    depends_on:
+      mysql:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://localhost:3000/api/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1.0"
+
+  # ==========================================================
+  # Uptime Kuma - 服务可用性监控
+  # 对外暴露端口 3001
+  # ==========================================================
+  uptime-kuma:
+    image: louislam/uptime-kuma:${UPTIME_KUMA_VERSION:-2}
+    container_name: uptime-kuma
+    <<: *default-restart
+    ports:
+      - "${UPTIME_KUMA_PORT:-3001}:3001"
+    volumes:
+      - ./data/uptime-kuma:/app/data
+    networks:
+      - monitoring
+    healthcheck:
+      test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://localhost:3001/api/entry-page || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "0.5"
+
+  # ==========================================================
+  # Pushgateway - 短生命周期任务指标推送网关
+  # 仅内部网络可访问，不对外暴露端口
+  # ==========================================================
+  pushgateway:
+    image: prom/pushgateway:${PUSHGATEWAY_VERSION:-v1.11.2}
+    container_name: pushgateway
+    <<: *default-restart
+    volumes:
+      - ./data/pushgateway:/pushgateway
+    command:
+      - "--persistence.file=/pushgateway/pushgateway.data"
+    networks:
+      - monitoring
+    healthcheck:
+      test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://localhost:9091/-/healthy || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.5"
+
+  # ==========================================================
+  # Node Exporter - 宿主机系统级指标采集
+  # 端口映射模式，通过挂载宿主机目录采集指标
+  # ==========================================================
+  node-exporter:
+    image: prom/node-exporter:${NODE_EXPORTER_VERSION:-v1.10.2}
+    container_name: node-exporter
+    <<: *default-restart
+    pid: host
+    command:
+      - "--path.rootfs=/host"
+      - "--path.procfs=/host/proc"
+      - "--path.sysfs=/host/sys"
+      - "--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)"
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/host:ro,rslave
+    networks:
+      - monitoring
+    healthcheck:
+      test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://localhost:9100/metrics || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.5"
+
+  # ==========================================================
+  # cAdvisor - 容器资源使用与性能指标采集
+  # 仅内部网络可访问，不对外暴露端口
+  # ==========================================================
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:${CADVISOR_VERSION:-v0.56.2}
+    container_name: cadvisor
+    <<: *default-restart
+    privileged: true
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /sys:/sys:ro
+      - /var/lib/docker:/var/lib/docker:ro
+      - /dev/disk:/dev/disk:ro
+    networks:
+      - monitoring
+    healthcheck:
+      test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://localhost:8080/healthz || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "0.5"
+
+  # ==========================================================
+  # Blackbox Exporter - HTTP/TCP/ICMP 黑盒探测
+  # 仅内部网络可访问，不对外暴露端口
+  # ==========================================================
+  blackbox-exporter:
+    image: prom/blackbox-exporter:${BLACKBOX_EXPORTER_VERSION:-v0.28.0}
+    container_name: blackbox-exporter
+    <<: *default-restart
+    volumes:
+      - ./config/blackbox/blackbox.yml:/etc/blackbox_exporter/config.yml:ro
+    networks:
+      - monitoring
+    healthcheck:
+      test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://localhost:9115/-/healthy || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: "0.25"
+
+  # ==========================================================
+  # MySQL Exporter - MySQL 数据库指标采集（可选组件）
+  # 通过 profiles 启用：docker compose --profile mysql-exporter up -d
+  # 仅内部网络可访问，不对外暴露端口
+  # ==========================================================
+  mysql-exporter:
+    image: prom/mysqld-exporter:${MYSQL_EXPORTER_VERSION:-v0.18.0}
+    container_name: mysql-exporter
+    <<: *default-restart
+    profiles:
+      - mysql-exporter
+    environment:
+      DATA_SOURCE_NAME: ${MYSQL_EXPORTER_DATA_SOURCE_NAME:-root:please_change_me@tcp(mysql:3306)/}
+    networks:
+      - monitoring
+    depends_on:
+      mysql:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://localhost:9104/metrics || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: "0.25"
+
+# ============================================================
+# 网络定义
+# ============================================================
+networks:
+  monitoring:
+    driver: bridge
+    name: monitoring
+

@@ -1,0 +1,39 @@
+# ============================================================
+# Loki 日志告警规则（基于 LogQL）
+# 由 Loki Ruler 组件评估，触发后发送至 Alertmanager
+# ============================================================
+groups:
+  - name: 日志告警规则
+    rules:
+      # 容器错误日志频率过高
+      - alert: ContainerErrorLogRateHigh
+        expr: |
+          sum(rate({job="docker"} |= "error" [5m])) by (container) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "容器 {{ $labels.container }} 错误日志频率过高"
+          description: "容器 {{ $labels.container }} 在过去 5 分钟内错误日志速率超过 0.5 条/秒，当前值: {{ $value }}"
+
+      # 容器致命错误日志
+      - alert: ContainerFatalLog
+        expr: |
+          sum(count_over_time({job="docker"} |~ "(?i)(fatal|panic|critical)" [5m])) by (container) > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "容器 {{ $labels.container }} 出现致命错误日志"
+          description: "容器 {{ $labels.container }} 在过去 5 分钟内检测到 fatal/panic/critical 级别日志"
+
+      # 容器 OOM 日志检测
+      - alert: ContainerOOMDetected
+        expr: |
+          sum(count_over_time({job="docker"} |~ "(?i)(out of memory|oom)" [5m])) by (container) > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "容器 {{ $labels.container }} 检测到 OOM 事件"
+          description: "容器 {{ $labels.container }} 日志中出现内存溢出相关关键词"

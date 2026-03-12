@@ -1,0 +1,36 @@
+# Alertmanager 配置文件
+# 负责告警去重、分组、路由和通知转发
+
+global:
+  # 当告警被解决后，等待多长时间发送解决通知
+  resolve_timeout: 5m
+
+# 告警路由配置
+route:
+  # 按 alertname 和 severity 分组
+  group_by: ['alertname', 'severity']
+  # 新告警组等待时间（收集同组告警后再发送）
+  group_wait: 30s
+  # 同一组告警的发送间隔
+  group_interval: 5m
+  # 已发送告警的重复发送间隔
+  repeat_interval: 4h
+  # 默认接收器
+  receiver: 'prometheusalert'
+
+# 接收器配置
+receivers:
+  - name: 'prometheusalert'
+    webhook_configs:
+      - url: 'http://prometheus-alert:8080/prometheusalert'
+        send_resolved: true
+
+# 告警抑制规则
+# critical 级别告警抑制同源的 warning 级别告警
+inhibit_rules:
+  - source_matchers:
+      - severity = "critical"
+    target_matchers:
+      - severity = "warning"
+    # 当 alertname 和 instance 相同时触发抑制
+    equal: ['alertname', 'instance']
