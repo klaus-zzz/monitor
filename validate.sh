@@ -5,7 +5,7 @@
 # 依赖：docker、docker compose
 # ============================================================
 
-set -euo pipefail
+set -uo pipefail
 
 # ---------- 颜色定义 ----------
 RED='\033[0;31m'
@@ -71,7 +71,7 @@ else
     # 需要同时挂载 rules 目录，因为 prometheus.yml 引用了 rule_files
     if docker run --rm \
         -v "$(pwd)/config/prometheus:/etc/prometheus:ro" \
-        prom/prometheus \
+        docker.1ms.run/prom/prometheus \
         promtool check config /etc/prometheus/prometheus.yml 2>&1; then
         info "$PROM_CONFIG 语法正确"
         ((PASS++))
@@ -91,7 +91,7 @@ if [ ! -f "$RULES_FILE" ]; then
 else
     if docker run --rm \
         -v "$(pwd)/config/prometheus/rules:/rules:ro" \
-        prom/prometheus \
+        docker.1ms.run/prom/prometheus \
         promtool check rules /rules/alert-rules.yml 2>&1; then
         info "$RULES_FILE 语法正确"
         ((PASS++))
@@ -111,7 +111,7 @@ if [ ! -f "$AM_CONFIG" ]; then
 else
     if docker run --rm \
         -v "$(pwd)/config/alertmanager:/etc/alertmanager:ro" \
-        prom/alertmanager \
+        docker.1ms.run/prom/alertmanager \
         amtool check-config /etc/alertmanager/alertmanager.yml 2>&1; then
         info "$AM_CONFIG 语法正确"
         ((PASS++))

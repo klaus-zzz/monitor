@@ -63,6 +63,9 @@ loki.source.docker "containers" {
   targets    = discovery.relabel.docker_labels.output
   forward_to = [loki.process.docker_logs.receiver]
 
+  // 只采集新日志，跳过历史旧日志，避免 Loki 拒绝过期时间戳
+  tail = true
+
   // 默认标签
   labels = {
     job = "docker",
