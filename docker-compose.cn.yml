@@ -1,9 +1,10 @@
 # ============================================================
-# Docker 生产级监控体系 - Docker Compose 编排文件
+# Docker 生产级监控体系 - Docker Compose 编排文件（国内镜像加速版）
+# 镜像加速站：docker.1ms.run / ghcr.1ms.run
 # 版本要求：Docker Compose v2.x+（使用 Compose Specification）
 # 使用方法：
 #   1. cp .env.example .env && 修改 .env 中的密码和配置
-#   2. docker compose up -d
+#   2. docker compose -f docker-compose.cn.yml up -d
 # ============================================================
 
 # 公共配置锚点：日志轮转
@@ -23,7 +24,7 @@ services:
   # 仅内部网络可访问，不对外暴露端口
   # ==========================================================
   mysql:
-    image: mysql:${MYSQL_VERSION:-8.4.8}
+    image: docker.1ms.run/library/mysql:${MYSQL_VERSION:-8.4.8}
     container_name: mysql
     <<: *default-restart
     environment:
@@ -54,7 +55,7 @@ services:
   # 对外暴露端口 9090
   # ==========================================================
   prometheus:
-    image: prom/prometheus:${PROMETHEUS_VERSION:-v3.10.0}
+    image: docker.1ms.run/prom/prometheus:${PROMETHEUS_VERSION:-v3.10.0}
     container_name: prometheus
     <<: *default-restart
     ports:
@@ -89,7 +90,7 @@ services:
   # 仅内部网络可访问，不对外暴露端口
   # ==========================================================
   alertmanager:
-    image: prom/alertmanager:${ALERTMANAGER_VERSION:-v0.31.1}
+    image: docker.1ms.run/prom/alertmanager:${ALERTMANAGER_VERSION:-v0.31.1}
     container_name: alertmanager
     <<: *default-restart
     command:
@@ -118,7 +119,7 @@ services:
   # 对外暴露端口 8080
   # ==========================================================
   prometheus-alert:
-    image: feiyu563/prometheus-alert:${PROMETHEUSALERT_VERSION:-v4.9.2}
+    image: docker.1ms.run/feiyu563/prometheus-alert:${PROMETHEUSALERT_VERSION:-v4.9.2}
     container_name: prometheus-alert
     <<: *default-restart
     ports:
@@ -157,7 +158,7 @@ services:
   # 仅内部网络可访问，不对外暴露端口
   # ==========================================================
   loki:
-    image: grafana/loki:${LOKI_VERSION:-3.6.7}
+    image: docker.1ms.run/grafana/loki:${LOKI_VERSION:-3.6.7}
     container_name: loki
     <<: *default-restart
     command:
@@ -186,7 +187,7 @@ services:
   # 通过 Docker Socket 自动发现并采集容器日志
   # ==========================================================
   alloy:
-    image: grafana/alloy:${ALLOY_VERSION:-v1.14.0}
+    image: docker.1ms.run/grafana/alloy:${ALLOY_VERSION:-v1.14.0}
     container_name: alloy
     <<: *default-restart
     command:
@@ -219,7 +220,7 @@ services:
   # 对外暴露端口 3000，使用 MySQL 作为后端数据库
   # ==========================================================
   grafana:
-    image: grafana/grafana:${GRAFANA_VERSION:-12.4.1}
+    image: docker.1ms.run/grafana/grafana:${GRAFANA_VERSION:-12.4.1}
     container_name: grafana
     <<: *default-restart
     ports:
@@ -259,7 +260,7 @@ services:
   # 对外暴露端口 3001
   # ==========================================================
   uptime-kuma:
-    image: louislam/uptime-kuma:${UPTIME_KUMA_VERSION:-2.2.1}
+    image: docker.1ms.run/louislam/uptime-kuma:${UPTIME_KUMA_VERSION:-2.2.1}
     container_name: uptime-kuma
     <<: *default-restart
     ports:
@@ -286,7 +287,7 @@ services:
   # 仅内部网络可访问，不对外暴露端口
   # ==========================================================
   pushgateway:
-    image: prom/pushgateway:${PUSHGATEWAY_VERSION:-v1.11.2}
+    image: docker.1ms.run/prom/pushgateway:${PUSHGATEWAY_VERSION:-v1.11.2}
     container_name: pushgateway
     <<: *default-restart
     volumes:
@@ -313,7 +314,7 @@ services:
   # 端口映射模式，通过挂载宿主机目录采集指标
   # ==========================================================
   node-exporter:
-    image: prom/node-exporter:${NODE_EXPORTER_VERSION:-v1.10.2}
+    image: docker.1ms.run/prom/node-exporter:${NODE_EXPORTER_VERSION:-v1.10.2}
     container_name: node-exporter
     <<: *default-restart
     pid: host
@@ -321,7 +322,7 @@ services:
       - "--path.rootfs=/host"
       - "--path.procfs=/host/proc"
       - "--path.sysfs=/host/sys"
-      - "--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)"
+      - "--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($|/)"
     volumes:
       - /proc:/host/proc:ro
       - /sys:/host/sys:ro
@@ -346,7 +347,7 @@ services:
   # 仅内部网络可访问，不对外暴露端口
   # ==========================================================
   cadvisor:
-    image: ghcr.io/google/cadvisor:${CADVISOR_VERSION:-0.56.2}
+    image: ghcr.1ms.run/google/cadvisor:${CADVISOR_VERSION:-0.56.2}
     container_name: cadvisor
     <<: *default-restart
     privileged: true
@@ -375,7 +376,7 @@ services:
   # 仅内部网络可访问，不对外暴露端口
   # ==========================================================
   blackbox-exporter:
-    image: prom/blackbox-exporter:${BLACKBOX_EXPORTER_VERSION:-v0.28.0}
+    image: docker.1ms.run/prom/blackbox-exporter:${BLACKBOX_EXPORTER_VERSION:-v0.28.0}
     container_name: blackbox-exporter
     <<: *default-restart
     volumes:
@@ -397,11 +398,11 @@ services:
 
   # ==========================================================
   # MySQL Exporter - MySQL 数据库指标采集（可选组件）
-  # 通过 profiles 启用：docker compose --profile mysql-exporter up -d
+  # 通过 profiles 启用：docker compose -f docker-compose.cn.yml --profile mysql-exporter up -d
   # 仅内部网络可访问，不对外暴露端口
   # ==========================================================
   mysql-exporter:
-    image: prom/mysqld-exporter:${MYSQL_EXPORTER_VERSION:-v0.18.0}
+    image: docker.1ms.run/prom/mysqld-exporter:${MYSQL_EXPORTER_VERSION:-v0.18.0}
     container_name: mysql-exporter
     <<: *default-restart
     profiles:
@@ -433,4 +434,3 @@ networks:
   monitoring:
     driver: bridge
     name: monitoring
-
