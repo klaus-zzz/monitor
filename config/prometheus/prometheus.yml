@@ -84,13 +84,6 @@ scrape_configs:
   # 可选抓取目标（取消注释以启用）
   # ----------------------------------------------------------
 
-  # MySQL Exporter - MySQL 数据库指标
-  # 需先通过 profiles 启用 mysql-exporter 服务：
-  #   docker compose --profile mysql-exporter up -d
-  # - job_name: "mysql-exporter"
-  #   static_configs:
-  #     - targets: ["mysql-exporter:9104"]
-
   # Docker Engine Metrics - Docker 守护进程指标
   # 需先在宿主机 /etc/docker/daemon.json 中配置：
   #   { "metrics-addr": "127.0.0.1:9323" }

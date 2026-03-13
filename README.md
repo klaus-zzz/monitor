@@ -42,7 +42,6 @@
 | cAdvisor | 容器资源使用指标采集 |
 | Blackbox Exporter | HTTP/TCP/ICMP 黑盒探测 |
 | Pushgateway | 短生命周期任务指标推送 |
-| MySQL Exporter | MySQL 数据库指标采集（可选） |
 
 ## 前置要求
 
@@ -72,9 +71,6 @@ MYSQL_ROOT_PASSWORD=your_strong_password_here
 
 # Grafana 管理员密码
 GF_SECURITY_ADMIN_PASSWORD=your_strong_password_here
-
-# MySQL Exporter 连接串（如启用，密码需与 MYSQL_ROOT_PASSWORD 一致）
-MYSQL_EXPORTER_DATA_SOURCE_NAME=root:your_strong_password_here@tcp(mysql:3306)/
 ```
 
 如需配置告警通知渠道，填写 `FEISHU_WEBHOOK_URL`（详见[环境变量说明](#环境变量说明)）。
@@ -121,7 +117,6 @@ docker compose ps
 | `NODE_EXPORTER_VERSION` | v1.10.2 | Node Exporter 版本 |
 | `CADVISOR_VERSION` | v0.56.2 | cAdvisor 版本 |
 | `BLACKBOX_EXPORTER_VERSION` | v0.28.0 | Blackbox Exporter 版本 |
-| `MYSQL_EXPORTER_VERSION` | v0.18.0 | MySQL Exporter 版本（可选组件） |
 
 ### 端口配置
 
@@ -190,36 +185,6 @@ curl -X POST http://localhost:9090/-/reload
 
 # 方式二：重启容器
 docker compose restart prometheus
-```
-
-### MySQL Exporter（MySQL 数据库指标采集）
-
-MySQL Exporter 通过 Docker Compose profiles 管理，默认不启动。
-
-**启用步骤：**
-
-1. 在 `.env` 中配置连接信息（密码需与 `MYSQL_ROOT_PASSWORD` 一致）：
-
-```dotenv
-MYSQL_EXPORTER_DATA_SOURCE_NAME=root:your_password@tcp(mysql:3306)/
-```
-
-2. 使用 `--profile` 参数启动：
-
-```bash
-# 启动时包含 MySQL Exporter
-docker compose --profile mysql-exporter up -d
-
-# 仅启动 MySQL Exporter（其他服务已运行时）
-docker compose --profile mysql-exporter up -d mysql-exporter
-```
-
-3. 在 `config/prometheus/prometheus.yml` 中取消注释 `mysql-exporter` 相关配置，然后重载 Prometheus。
-
-**停用：**
-
-```bash
-docker compose --profile mysql-exporter stop mysql-exporter
 ```
 
 ## 常见问题排查
@@ -467,7 +432,4 @@ docker compose restart <服务名>
 
 # 更新镜像并重建
 docker compose pull && docker compose up -d
-
-# 启动包含可选组件的完整栈
-docker compose --profile mysql-exporter up -d
 ```

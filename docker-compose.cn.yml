@@ -454,37 +454,7 @@ services:
   #         memory: 128M
   #         cpus: "0.25"
 
-  # ==========================================================
-  # MySQL Exporter - MySQL 数据库指标采集（可选组件）
-  # 通过 profiles 启用：docker compose -f docker-compose.cn.yml --profile mysql-exporter up -d
-  # 仅内部网络可访问，不对外暴露端口
-  # ==========================================================
-  mysql-exporter:
-    image: docker.1ms.run/prom/mysqld-exporter:${MYSQL_EXPORTER_VERSION:-v0.18.0}
-    container_name: mysql-exporter
-    <<: *default-restart
-    profiles:
-      - mysql-exporter
-    environment:
-      DATA_SOURCE_NAME: ${MYSQL_EXPORTER_DATA_SOURCE_NAME:-root:please_change_me@tcp(mysql:3306)/}
-      TZ: ${TZ:-Asia/Shanghai}
-    networks:
-      - monitoring
-    depends_on:
-      mysql:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://localhost:9104/metrics || exit 1"]
-      interval: 15s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
-    logging: *default-logging
-    deploy:
-      resources:
-        limits:
-          memory: 128M
-          cpus: "0.25"
+
 
 # ============================================================
 # 网络定义

@@ -1,6 +1,7 @@
 # ============================================================
 # Loki 日志告警规则（基于 LogQL）
 # 由 Loki Ruler 组件评估，触发后发送至 Alertmanager
+# 注意：所有规则排除 loki 容器自身日志，避免 ruler 查询文本被自引用匹配
 # ============================================================
 groups:
   - name: 日志告警规则
@@ -8,7 +9,7 @@ groups:
       # 容器错误日志频率过高
       - alert: ContainerErrorLogRateHigh
         expr: |
-          sum(rate({job="docker"} |= "error" [5m])) by (container) > 0.5
+          sum(rate({job="docker", container!="loki"} |= "error" [5m])) by (container) > 0.5
         for: 5m
         labels:
           severity: warning
@@ -19,7 +20,7 @@ groups:
       # 容器致命错误日志
       - alert: ContainerFatalLog
         expr: |
-          sum(count_over_time({job="docker"} |~ "(?i)(fatal|panic|critical)" [5m])) by (container) > 0
+          sum(count_over_time({job="docker", container!="loki"} |~ "(?i)(fatal|panic|critical)" [5m])) by (container) > 0
         for: 1m
         labels:
           severity: critical
@@ -28,9 +29,10 @@ groups:
           description: "容器 {{ $labels.container }} 在过去 5 分钟内检测到 fatal/panic/critical 级别日志"
 
       # 容器 OOM 日志检测
+      # 使用精确的 OOM 关键词匹配，避免误匹配 zoom/bloom 等包含 oom 子串的单词
       - alert: ContainerOOMDetected
         expr: |
-          sum(count_over_time({job="docker"} |~ "(?i)(out of memory|oom)" [5m])) by (container) > 0
+          sum(count_over_time({job="docker", container!="loki"} |~ "(?i)(out of memory|oom-kill|oom_kill|OOMKilled|oom killer|invoked oom)" [5m])) by (container) > 0
         for: 1m
         labels:
           severity: critical
