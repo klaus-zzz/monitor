@@ -29,7 +29,7 @@ services:
     <<: *default-restart
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-please_change_me}
-      MYSQL_DATABASE: ${MYSQL_DATABASE:-monitor}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-grafana}
       # 设置字符集为 utf8mb4
       MYSQL_CHARSET: utf8mb4
       MYSQL_COLLATION: utf8mb4_unicode_ci
@@ -242,7 +242,7 @@ services:
       # MySQL 后端数据库配置
       GF_DATABASE_TYPE: mysql
       GF_DATABASE_HOST: mysql:3306
-      GF_DATABASE_NAME: ${MYSQL_DATABASE:-monitor}
+      GF_DATABASE_NAME: ${MYSQL_DATABASE:-grafana}
       GF_DATABASE_USER: root
       GF_DATABASE_PASSWORD: ${MYSQL_ROOT_PASSWORD:-please_change_me}
       # 管理员密码
