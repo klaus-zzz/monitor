@@ -63,9 +63,6 @@ loki.source.docker "containers" {
   targets    = discovery.relabel.docker_labels.output
   forward_to = [loki.process.docker_logs.receiver]
 
-  // 只采集新日志，跳过历史旧日志，避免 Loki 拒绝过期时间戳
-  tail = true
-
   // 默认标签
   labels = {
     job = "docker",
@@ -81,6 +78,12 @@ loki.source.docker "containers" {
 // ------------------------------------------------------------
 loki.process "docker_logs" {
   forward_to = [loki.write.loki.receiver]
+
+  // 丢弃超过指定时间的旧日志，避免 Loki 拒绝过期时间戳
+  stage.drop {
+    older_than          = sys.env("LOG_DROP_OLDER_THAN")
+    drop_counter_reason = "too_old"
+  }
 
   // 提取 Docker 日志的 stream 标签（stdout/stderr）
   stage.labels {
