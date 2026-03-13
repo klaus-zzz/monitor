@@ -4,27 +4,22 @@
 
 ## 架构概览
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    Docker Network: monitoring                │
-│                                                              │
-│  ┌──────────┐    ┌──────────────┐    ┌─────────────────┐    │
-│  │Prometheus │───▶│ Alertmanager │───▶│ Webhook Bridge │    │
-│  │  :9090    │    │   (内部)     │    │    (内部)      │    │
-│  └──┬─┬──┬──┘    └──────────────┘    └────────┬────────┘    │
-│     │ │  │                                     │             │
-│     │ │  │  ┌──────────┐  ┌──────┐            ▼             │
-│     │ │  └──│  Grafana  │──│MySQL │         飞书群           │
-│     │ │     │  :3000    │  │(内部)│                          │
-│     │ │     └─────┬─────┘  └──────┘                          │
-│     │ │           │                                          │
-│  ┌──┴─┴───┐  ┌───┴──┐  ┌───────────┐  ┌──────────────┐    │
-│  │Exporters│  │ Loki │◀─│   Alloy   │  │ Uptime Kuma  │    │
-│  │ (内部)  │  │(内部)│  │  (内部)   │  │    :3001     │    │
-│  └─────────┘  └──────┘  └───────────┘  └──────┬───────┘    │
-│                                                 │            │
-│                    Prometheus ◀── /metrics ──────┘            │
-└─────────────────────────────────────────────────────────────┘
+```mermaid
+graph TD
+    subgraph Docker Network: monitoring
+        Prometheus["Prometheus<br/>:9090"] -->|告警规则触发| Alertmanager["Alertmanager<br/>(内部)"]
+        Alertmanager -->|webhook| WebhookBridge["Webhook Bridge<br/>(内部)"]
+        WebhookBridge -->|推送通知| Feishu["飞书群"]
+
+        Prometheus -->|数据源| Grafana["Grafana<br/>:3000"]
+        Grafana --- MySQL["MySQL<br/>(内部)"]
+
+        Prometheus -->|抓取指标| Exporters["Exporters<br/>(内部)"]
+        Prometheus -->|抓取 /metrics| UptimeKuma["Uptime Kuma<br/>:3001"]
+
+        Alloy["Alloy<br/>(内部)"] -->|推送日志| Loki["Loki<br/>(内部)"]
+        Grafana -->|查询日志| Loki
+    end
 ```
 
 **包含组件：**
