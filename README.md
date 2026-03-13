@@ -300,6 +300,52 @@ docker compose logs prometheus-alert
 #    http://<宿主机IP>:8080
 ```
 
+### 配置飞书告警模板
+
+首次部署后，需要在 PrometheusAlert Web 界面手动配置飞书告警模板，否则告警消息无法正确发送到飞书群。
+
+**操作步骤：**
+
+1. 访问 PrometheusAlert Web 界面：`http://<宿主机IP>:8080`
+2. 进入 **模板管理** → **自定义模板**
+3. 找到名为 `prometheus-fs` 的模板（类型：飞书，用途：Prometheus），点击编辑
+4. 将模板内容替换为以下内容，保存即可
+
+**飞书告警模板（兼容 Prometheus 和 Loki 告警）：**
+
+```
+{{ $var := .externalURL}}{{ range $k,$v:=.alerts }}{{if eq $v.status "resolved"}}<font color="green">**✅ 环境恢复信息**</font>
+**告警名称：**{{$v.labels.alertname}}
+**告警类型：**{{$v.status}}
+**告警级别：**{{$v.labels.severity}}
+**告警来源：**{{if $v.labels.instance}}{{$v.labels.instance}}{{else if $v.labels.container}}容器: {{$v.labels.container}}{{else}}未知{{end}}
+**开始时间：**{{TimeFormat $v.startsAt "2006-01-02 15:04:05"}}
+**结束时间：**{{TimeFormat $v.endsAt "2006-01-02 15:04:05"}}
+**恢复详情：**<font color="green">{{$v.annotations.description}}</font>{{else}}<font color="red">**⚠ 环境异常告警**</font>
+**告警名称：**{{$v.labels.alertname}}
+**告警类型：**{{$v.status}}
+**告警级别：**{{$v.labels.severity}}
+**告警来源：**{{if $v.labels.instance}}{{$v.labels.instance}}{{else if $v.labels.container}}容器: {{$v.labels.container}}{{else}}未知{{end}}
+**开始时间：**{{TimeFormat $v.startsAt "2006-01-02 15:04:05"}}
+**故障描述：**<font color="red">{{$v.annotations.description}}</font>{{end}}{{ end }}
+{{ $urimsg:=""}}{{ range $key,$value:=.commonLabels }}{{$urimsg = print $urimsg $key "%3D%22" $value "%22%2C" }}{{end}}[点我屏蔽该告警]({{$var}}/#/silences/new?filter=%7B{{SplitString $urimsg 0 -3}}%7D)
+```
+
+> **说明：** 该模板同时兼容 Prometheus 指标告警（显示 `instance`）和 Loki 日志告警（显示 `container`）。模板内容也保存在 `config/prometheus-alert/templates.json` 中供参考。
+
+**验证告警链路：**
+
+```bash
+# 向 Alertmanager 发送测试告警
+curl -X POST http://localhost:9093/api/v2/alerts \
+  -H "Content-Type: application/json" \
+  -d '[{
+    "labels": {"alertname":"测试告警","severity":"warning","instance":"test:9090"},
+    "annotations": {"summary":"测试告警","description":"测试飞书告警链路是否正常"},
+    "startsAt": "'$(date -u +%Y-%m-%dT%H:%M:%SZ)'"
+  }]'
+```
+
 ### 容器日志占用磁盘空间过大
 
 本项目已为所有容器配置日志轮转（单文件最大 10MB，最多保留 3 个文件）。如果宿主机上其他容器未配置日志轮转，可全局设置：
