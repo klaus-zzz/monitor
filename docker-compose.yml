@@ -198,7 +198,7 @@ services:
       - "/etc/alloy/config.alloy"
       - "--server.http.listen-addr=0.0.0.0:12345"
     environment:
-      LOG_DROP_OLDER_THAN: ${LOG_DROP_OLDER_THAN:-168h}
+      LOG_DROP_OLDER_THAN: ${LOG_DROP_OLDER_THAN:-166h}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./config/alloy/config.alloy:/etc/alloy/config.alloy:ro
