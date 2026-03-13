@@ -104,15 +104,15 @@ groups:
           summary: "监控目标不可达 (实例: {{ $labels.instance }})"
           description: "Prometheus 抓取目标 {{ $labels.job }}/{{ $labels.instance }} 已不可达，持续超过 1 分钟。请检查目标服务是否正常运行。"
 
-      # Blackbox HTTP 探测失败
-      - alert: HttpProbeFailed
-        expr: probe_success{job="blackbox-http"} == 0
-        for: 1m
-        labels:
-          severity: critical
-        annotations:
-          summary: "HTTP 探测失败 (目标: {{ $labels.instance }})"
-          description: "Blackbox Exporter 对 {{ $labels.instance }} 的 HTTP 探测失败，持续超过 1 分钟。请检查目标服务的可达性和响应状态。"
+      # Blackbox HTTP 探测失败（已由 Uptime Kuma 替代，如需启用请取消注释）
+      # - alert: HttpProbeFailed
+      #   expr: probe_success{job="blackbox-http"} == 0
+      #   for: 1m
+      #   labels:
+      #     severity: critical
+      #   annotations:
+      #     summary: "HTTP 探测失败 (目标: {{ $labels.instance }})"
+      #     description: "Blackbox Exporter 对 {{ $labels.instance }} 的 HTTP 探测失败，持续超过 1 分钟。请检查目标服务的可达性和响应状态。"
 
   # ==========================================================
   # Prometheus 自身告警规则

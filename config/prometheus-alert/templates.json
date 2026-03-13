@@ -1,0 +1,11 @@
+[
+  {
+    "Id": 1,
+    "Tpltype": "fs",
+    "Tpluse": "Prometheus",
+    "Tplname": "prometheus-fs",
+    "Tpl": "{{ $var := .externalURL}}{{ range $k,$v:=.alerts }}{{if eq $v.status \"resolved\"}}<font color=\"green\">**✅ 环境恢复信息**</font>\n**告警名称：**{{$v.labels.alertname}}\n**告警类型：**{{$v.status}}\n**告警级别：**{{$v.labels.severity}}\n**开始时间：**{{TimeFormat $v.startsAt \"2006-01-02 15:04:05\"}}\n**结束时间：**{{TimeFormat $v.endsAt \"2006-01-02 15:04:05\"}}\n**故障实例：**{{$v.labels.instance}}\n**恢复详情：**<font color=\"green\">{{$v.annotations.description}}</font>{{else}}<font color=\"red\">**⚠ 环境异常告警**</font>\n**告警名称：**{{$v.labels.alertname}}\n**告警类型：**{{$v.status}}\n**告警级别：**{{$v.labels.severity}}\n**开始时间：**{{TimeFormat $v.startsAt \"2006-01-02 15:04:05\"}}\n**故障实例：**{{$v.labels.instance}}\n**故障描述：**<font color=\"red\">{{$v.annotations.description}}</font>{{end}}{{ end }}\n{{ $urimsg:=\"\"}}{{ range $key,$value:=.commonLabels }}{{$urimsg = print $urimsg $key \"%3D%22\" $value \"%22%2C\" }}{{end}}[点我屏蔽该告警]({{$var}}/#/silences/new?filter=%7B{{SplitString $urimsg 0 -3}}%7D)",
+    "WebhookContentType": "",
+    "Created": "2026-03-13T00:00:00Z"
+  }
+]

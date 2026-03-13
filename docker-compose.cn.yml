@@ -11,7 +11,7 @@
 x-logging: &default-logging
   driver: json-file
   options:
-    max-size: "10m"
+    max-size: "100m"
     max-file: "3"
 
 # 公共配置锚点：重启策略
@@ -20,7 +20,7 @@ x-restart: &default-restart
 
 services:
   # ==========================================================
-  # MySQL - Grafana 后端数据库
+  # MySQL - 监控体系公共数据库
   # 仅内部网络可访问，不对外暴露端口
   # ==========================================================
   mysql:
@@ -29,7 +29,7 @@ services:
     <<: *default-restart
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-please_change_me}
-      MYSQL_DATABASE: ${MYSQL_DATABASE:-grafana}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-monitor}
       # 设置字符集为 utf8mb4
       MYSQL_CHARSET: utf8mb4
       MYSQL_COLLATION: utf8mb4_unicode_ci
@@ -95,6 +95,8 @@ services:
     image: docker.1ms.run/prom/alertmanager:${ALERTMANAGER_VERSION:-v0.31.1}
     container_name: alertmanager
     <<: *default-restart
+    # 以 root 用户运行，避免挂载目录权限问题
+    user: "0"
     command:
       - "--config.file=/etc/alertmanager/alertmanager.yml"
       - "--storage.path=/alertmanager"
@@ -210,7 +212,7 @@ services:
       loki:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://localhost:12345/ready || exit 1"]
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/12345' || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 3
@@ -238,7 +240,7 @@ services:
       # MySQL 后端数据库配置
       GF_DATABASE_TYPE: mysql
       GF_DATABASE_HOST: mysql:3306
-      GF_DATABASE_NAME: ${MYSQL_DATABASE:-grafana}
+      GF_DATABASE_NAME: ${MYSQL_DATABASE:-monitor}
       GF_DATABASE_USER: root
       GF_DATABASE_PASSWORD: ${MYSQL_ROOT_PASSWORD:-please_change_me}
       # 管理员密码
@@ -276,8 +278,6 @@ services:
       - "${UPTIME_KUMA_PORT:-3001}:3001"
     environment:
       - NODE_ENV=production
-      # 启用内置 MariaDB，替代默认的 SQLite
-      - UPTIME_KUMA_ENABLE_EMBEDDED_MARIADB=1
     volumes:
       - ./data/uptime-kuma:/app/data
       - /etc/localtime:/etc/localtime:ro
@@ -286,13 +286,15 @@ services:
       - 8.8.4.4
     networks:
       - monitoring
-    # 内置 MariaDB 启动较慢，需要加大 start_period
+    depends_on:
+      mysql:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "extra/healthcheck"]
-      interval: 60s
-      timeout: 30s
-      retries: 5
-      start_period: 180s
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     security_opt:
       - no-new-privileges:true
     logging: *default-logging
@@ -310,6 +312,8 @@ services:
     image: docker.1ms.run/prom/pushgateway:${PUSHGATEWAY_VERSION:-v1.11.2}
     container_name: pushgateway
     <<: *default-restart
+    # 以 root 用户运行，避免挂载目录权限问题
+    user: "0"
     volumes:
       - ./data/pushgateway:/pushgateway
     command:
@@ -358,10 +362,11 @@ services:
       - /proc:/host/proc:ro
       - /sys:/host/sys:ro
       - /:/host:ro,rslave
+      - /run/udev/data:/run/udev/data:ro
     networks:
       - monitoring
     healthcheck:
-      test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://localhost:9100/metrics || exit 1"]
+      test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://localhost:9100/ || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 3
@@ -382,10 +387,14 @@ services:
     container_name: cadvisor
     <<: *default-restart
     privileged: true
+    command:
+      # 仅监控 Docker 容器，跳过 systemd scope 扫描，避免孤儿 scope 导致的报错
+      - "--docker_only=true"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - /sys:/sys:ro
-      - ${DOCKER_DATA_ROOT:-/var/lib/docker}:/var/lib/docker:ro
+      # 挂载路径必须与宿主机一致，cadvisor 通过 Docker API 获取宿主机真实路径
+      - ${DOCKER_DATA_ROOT:-/var/lib/docker}:${DOCKER_DATA_ROOT:-/var/lib/docker}:ro
       - /dev/disk:/dev/disk:ro
     networks:
       - monitoring
@@ -403,29 +412,28 @@ services:
           cpus: "0.5"
 
   # ==========================================================
-  # Blackbox Exporter - HTTP/TCP/ICMP 黑盒探测
-  # 仅内部网络可访问，不对外暴露端口
+  # Blackbox Exporter - 已由 Uptime Kuma 替代，如需启用请取消注释
   # ==========================================================
-  blackbox-exporter:
-    image: docker.1ms.run/prom/blackbox-exporter:${BLACKBOX_EXPORTER_VERSION:-v0.28.0}
-    container_name: blackbox-exporter
-    <<: *default-restart
-    volumes:
-      - ./config/blackbox/blackbox.yml:/etc/blackbox_exporter/config.yml:ro
-    networks:
-      - monitoring
-    healthcheck:
-      test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://localhost:9115/-/healthy || exit 1"]
-      interval: 15s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
-    logging: *default-logging
-    deploy:
-      resources:
-        limits:
-          memory: 128M
-          cpus: "0.25"
+  # blackbox-exporter:
+  #   image: docker.1ms.run/prom/blackbox-exporter:${BLACKBOX_EXPORTER_VERSION:-v0.28.0}
+  #   container_name: blackbox-exporter
+  #   <<: *default-restart
+  #   volumes:
+  #     - ./config/blackbox/blackbox.yml:/etc/blackbox_exporter/config.yml:ro
+  #   networks:
+  #     - monitoring
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://localhost:9115/-/healthy || exit 1"]
+  #     interval: 15s
+  #     timeout: 5s
+  #     retries: 3
+  #     start_period: 10s
+  #   logging: *default-logging
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         memory: 128M
+  #         cpus: "0.25"
 
   # ==========================================================
   # MySQL Exporter - MySQL 数据库指标采集（可选组件）

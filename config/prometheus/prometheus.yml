@@ -51,29 +51,23 @@ scrape_configs:
     static_configs:
       - targets: ["pushgateway:9091"]
 
-  # Blackbox Exporter - HTTP/TCP/ICMP 黑盒探测
-  # 通过 relabel_configs 实现多目标探测
-  # 在 targets 中添加需要探测的 URL 或地址
-  - job_name: "blackbox-http"
-    metrics_path: /probe
-    params:
-      module: [http_2xx]
-    static_configs:
-      - targets:
-          # 示例探测目标，请根据实际需求修改
-          - "http://grafana:3000/api/health"
-          - "http://prometheus:9090/-/healthy"
-          - "http://prometheus-alert:8080/health"
-    relabel_configs:
-      # 将探测目标地址写入 __param_target 参数
-      - source_labels: [__address__]
-        target_label: __param_target
-      # 将探测目标地址保留为 instance 标签
-      - source_labels: [__param_target]
-        target_label: instance
-      # 将实际抓取地址替换为 Blackbox Exporter 地址
-      - target_label: __address__
-        replacement: "blackbox-exporter:9115"
+  # Blackbox Exporter - 已由 Uptime Kuma 替代，如需启用请取消注释
+  # - job_name: "blackbox-http"
+  #   metrics_path: /probe
+  #   params:
+  #     module: [http_2xx]
+  #   static_configs:
+  #     - targets:
+  #         - "http://grafana:3000/api/health"
+  #         - "http://prometheus:9090/-/healthy"
+  #         - "http://prometheus-alert:8080/health"
+  #   relabel_configs:
+  #     - source_labels: [__address__]
+  #       target_label: __param_target
+  #     - source_labels: [__param_target]
+  #       target_label: instance
+  #     - target_label: __address__
+  #       replacement: "blackbox-exporter:9115"
 
   # ----------------------------------------------------------
   # 可选抓取目标（取消注释以启用）

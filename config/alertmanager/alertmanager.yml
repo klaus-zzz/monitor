@@ -1,28 +1,37 @@
+# ============================================================
 # Alertmanager 配置文件
 # 负责告警去重、分组、路由和通知转发
+# 所有告警统一使用 prometheus-fs 模板通过飞书发送
+# ============================================================
 
 global:
-  # 当告警被解决后，等待多长时间发送解决通知
   resolve_timeout: 5m
 
 # 告警路由配置
 route:
-  # 按 alertname 和 severity 分组
-  group_by: ['alertname', 'severity']
-  # 新告警组等待时间（收集同组告警后再发送）
-  group_wait: 30s
-  # 同一组告警的发送间隔
+  group_by: ['instance', 'severity', 'alertname']
+  group_wait: 15s
   group_interval: 5m
-  # 已发送告警的重复发送间隔
-  repeat_interval: 4h
-  # 默认接收器
-  receiver: 'prometheusalert'
+  repeat_interval: 24h
+  receiver: 'web.hook.prometheusalert'
+  routes:
+    # 静默 info/none 级别告警
+    - match:
+        severity: 'info'
+      receiver: 'null'
+    - match:
+        severity: 'none'
+      receiver: 'null'
 
 # 接收器配置
 receivers:
-  - name: 'prometheusalert'
+  # 静默接收器
+  - name: 'null'
+  # 默认接收器 - 所有告警统一通过 PrometheusAlert 转发至飞书
+  # fsurl 参数从 .env 中 PA_FEISHU_URL 获取，部署时按需修改
+  - name: 'web.hook.prometheusalert'
     webhook_configs:
-      - url: 'http://prometheus-alert:8080/prometheusalert'
+      - url: 'http://prometheus-alert:8080/prometheusalert?type=fs&tpl=prometheus-fs'
         send_resolved: true
 
 # 告警抑制规则
@@ -32,5 +41,4 @@ inhibit_rules:
       - severity = "critical"
     target_matchers:
       - severity = "warning"
-    # 当 alertname 和 instance 相同时触发抑制
     equal: ['alertname', 'instance']
