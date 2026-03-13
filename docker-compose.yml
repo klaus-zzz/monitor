@@ -34,6 +34,8 @@ services:
       MYSQL_COLLATION: utf8mb4_unicode_ci
     volumes:
       - ./data/mysql:/var/lib/mysql
+      # 首次初始化时自动创建额外数据库（如 kuma）
+      - ./config/mysql/init:/docker-entrypoint-initdb.d:ro
     networks:
       - monitoring
     healthcheck:
