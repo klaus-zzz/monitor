@@ -58,7 +58,7 @@ scrape_configs:
     metrics_path: '/metrics'
     basic_auth:
       username: 'admin'
-      password: 'uptimekuma'
+      password: 'uptime123'
     static_configs:
       - targets: ['uptime-kuma:3001']
 
