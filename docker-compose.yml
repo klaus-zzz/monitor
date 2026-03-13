@@ -137,6 +137,8 @@ services:
       FEISHU_WEBHOOK_URL: ${FEISHU_WEBHOOK_URL:-}
       FEISHU_SECRET: ${FEISHU_SECRET:-}
       TZ_OFFSET: "8"
+    volumes:
+      - ./config/webhook-bridge/template.json:/app/template.json:ro
     networks:
       - monitoring
     healthcheck:

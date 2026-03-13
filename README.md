@@ -289,15 +289,61 @@ docker compose ps webhook-bridge
 # 3. 查看 webhook-bridge 日志
 docker compose logs webhook-bridge
 
-# 4. 手动发送测试告警
-curl -X POST http://localhost:9093/api/v2/alerts \
-  -H "Content-Type: application/json" \
-  -d '[{
-    "labels": {"alertname":"测试告警","severity":"warning","instance":"test:9090"},
-    "annotations": {"summary":"测试告警","description":"测试飞书告警链路是否正常"},
-    "startsAt": "'$(date -u +%Y-%m-%dT%H:%M:%SZ)'"
-  }]'
+# 4. 手动发送测试告警（通过容器内部访问 Alertmanager）
+docker exec alertmanager wget \
+  --post-data='[{"labels":{"alertname":"test","severity":"warning","instance":"test:9090"},"annotations":{"summary":"test","description":"test alert"}}]' \
+  --header='Content-Type: application/json' \
+  -qO- http://localhost:9093/api/v2/alerts
 ```
+
+### 自定义飞书告警卡片模板
+
+告警卡片的样式通过 `config/webhook-bridge/template.json` 配置，修改后无需重建容器，下次告警触发时自动生效（模板文件以只读方式挂载，每次请求重新加载）。
+
+**模板结构说明：**
+
+```json
+{
+  "firing": {
+    "header_color": "red",
+    "header_title": "⚠ {{project_name}} 环境异常告警",
+    "fields": [
+      "{{links}}",
+      "**告警名称：** {{alertname}}",
+      "**告警级别：** {{severity}}",
+      "**告警来源：** {{source}}",
+      "**开始时间：** {{starts_at}}",
+      "**故障描述：** {{description}}"
+    ]
+  },
+  "resolved": {
+    "header_color": "green",
+    "header_title": "✅ {{project_name}} 环境恢复信息",
+    "fields": ["..."]
+  },
+  "project_name": "监控系统",
+  "links": {
+    "grafana": { "text": "Grafana", "url": "http://your-grafana:3000" },
+    "prometheus": { "text": "Prometheus", "url": "http://your-prometheus:9090" }
+  }
+}
+```
+
+**可用模板变量：**
+
+| 变量 | 说明 |
+|------|------|
+| `{{project_name}}` | 项目名称（顶层 `project_name` 字段） |
+| `{{alertname}}` | 告警名称 |
+| `{{status}}` | 告警状态（firing / resolved） |
+| `{{severity}}` | 告警级别 |
+| `{{source}}` | 告警来源（instance 或容器名） |
+| `{{description}}` | 告警描述 |
+| `{{starts_at}}` | 开始时间（已转为东八区） |
+| `{{ends_at}}` | 结束时间（仅恢复告警） |
+| `{{links}}` | 快捷链接（根据 `links` 配置自动生成） |
+
+**卡片颜色可选值：** `blue`、`red`、`orange`、`green`、`purple`、`indigo`、`grey`
 
 ### 容器日志占用磁盘空间过大
 
@@ -364,12 +410,14 @@ monitor/
 │   │   └── config.alloy                  # Alloy 采集配置（River 语法）
 │   ├── blackbox/
 │   │   └── blackbox.yml                  # Blackbox Exporter 探测模块配置
+│   ├── webhook-bridge/
+│   │   └── template.json                # 飞书告警卡片模板（可自定义）
 │   └── grafana/
 │       └── provisioning/
 │           └── datasources/
 │               └── datasources.yml       # Grafana 数据源自动配置
 ├── webhook-bridge/                       # Alertmanager → 飞书转发服务
-│   ├── app.py                            # 转发逻辑
+│   ├── app.py                            # 转发逻辑（支持可配置模板）
 │   ├── requirements.txt
 │   └── Dockerfile
 └── data/                                 # 持久化数据目录（自动创建，不纳入版本控制）
@@ -379,8 +427,7 @@ monitor/
     ├── grafana/
     ├── mysql/
     ├── uptime-kuma/
-    ├── pushgateway/
-    └── prometheus-alert/
+    └── pushgateway/
 ```
 
 ## 配置文件验证

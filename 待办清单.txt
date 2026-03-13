@@ -1,8 +1,0 @@
-待办清单（需要在服务器上操作）：
-⬜ 测试飞书告警链路：
-确认 PrometheusAlert 运行正常：docker compose ps prometheus-alert
-确认飞书 webhook 地址正确：检查 .env 中 PA_FEISHU_URL
-在 PrometheusAlert Web 界面（:8080）确认 prometheus-fs 模板存在
-手动触发测试告警验证飞书是否收到消息
-⬜ 如果模板不存在，在 PrometheusAlert Web 界面手动创建模板（类型：飞书，用途：Prometheus，名称：prometheus-fs）
-⬜ 确保发送的消息能够符合loki和prometheus的两种格式
