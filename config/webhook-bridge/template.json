@@ -28,8 +28,7 @@
   "project_name": "监控系统",
   "links": {
     "grafana": { "text": "grafana", "url": "" },
-    "alertmanager": { "text": "alertmanager", "url": "" },
     "prometheus": { "text": "prometheus", "url": "" }
   },
-  "note": "PrometheusAlert"
+  "note": "Webhook-bridge"
 }
