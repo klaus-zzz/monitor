@@ -28,6 +28,7 @@
   "project_name": "监控系统",
   "links": {
     "grafana": { "text": "grafana", "url": "" },
+    "uptime-kuma": { "text": "uptime-kuma", "url": "" },
     "prometheus": { "text": "prometheus", "url": "" }
   },
   "note": "Webhook-bridge"
