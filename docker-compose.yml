@@ -341,6 +341,17 @@ services:
       - "--path.procfs=/host/proc"
       - "--path.sysfs=/host/sys"
       - "--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)"
+      # 禁用所有默认 collector，只启用核心指标
+      - "--collector.disable-defaults"
+      - "--collector.cpu"
+      - "--collector.meminfo"
+      - "--collector.filesystem"
+      - "--collector.diskstats"
+      - "--collector.netdev"
+      - "--collector.loadavg"
+      - "--collector.uname"
+      - "--collector.time"
+      - "--collector.stat"
     volumes:
       - /proc:/host/proc:ro
       - /sys:/host/sys:ro
@@ -372,7 +383,7 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - /sys:/sys:ro
-      - /var/lib/docker:/var/lib/docker:ro
+      - ${DOCKER_DATA_ROOT:-/var/lib/docker}:/var/lib/docker:ro
       - /dev/disk:/dev/disk:ro
     networks:
       - monitoring
