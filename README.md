@@ -33,7 +33,7 @@
 |------|------|
 | Prometheus | 指标采集与时序数据存储 |
 | Alertmanager | 告警去重、分组与路由 |
-| Webhook Bridge | Alertmanager → 飞书告警转发 |
+| Webhook Bridge | Alertmanager → 飞书告警转发（[独立项目](https://github.com/klaus-zzz/webhook-bridge)） |
 | Loki | 轻量级日志聚合 |
 | Alloy | Docker 容器日志自动采集 |
 | Grafana | 统一可视化仪表盘（MySQL 后端） |
@@ -396,10 +396,6 @@ monitor/
 │       └── provisioning/
 │           └── datasources/
 │               └── datasources.yml       # Grafana 数据源自动配置
-├── webhook-bridge/                       # Alertmanager → 飞书转发服务
-│   ├── app.py                            # 转发逻辑（支持可配置模板）
-│   ├── requirements.txt
-│   └── Dockerfile
 └── data/                                 # 持久化数据目录（自动创建，不纳入版本控制）
     ├── prometheus/
     ├── alertmanager/

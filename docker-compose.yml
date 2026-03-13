@@ -129,8 +129,10 @@ services:
   # 仅内部网络可访问，不对外暴露端口
   # ==========================================================
   webhook-bridge:
-    build: ./webhook-bridge
-    image: webhook-bridge:latest
+    image: iruiiii/webhook-bridge:latest
+    # 本地构建（取消注释以下两行，注释上面的 image）
+    # build: ./webhook-bridge
+    # image: webhook-bridge:latest
     container_name: webhook-bridge
     <<: *default-restart
     environment:
