@@ -82,8 +82,9 @@ loki.process "docker_logs" {
   // 丢弃超过指定时间的旧日志，避免 Loki 拒绝过期时间戳
   // 通过环境变量 LOG_DROP_OLDER_THAN 控制阈值（默认 166h）
   // 需小于 Loki 的 reject_old_samples_max_age（默认 168h），预留 2h 缓冲
+  // 使用 coalesce 兜底，防止环境变量未设置时 Alloy 启动失败
   stage.drop {
-    older_than          = sys.env("LOG_DROP_OLDER_THAN")
+    older_than          = coalesce(sys.env("LOG_DROP_OLDER_THAN"), "166h")
     drop_counter_reason = "too_old"
   }
 

@@ -198,6 +198,9 @@ services:
       - "run"
       - "/etc/alloy/config.alloy"
       - "--server.http.listen-addr=0.0.0.0:12345"
+    environment:
+      # Alloy 丢弃超过此时间的旧日志，需小于 Loki 的 reject_old_samples_max_age(168h)
+      LOG_DROP_OLDER_THAN: ${LOG_DROP_OLDER_THAN:-166h}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./config/alloy/config.alloy:/etc/alloy/config.alloy:ro
