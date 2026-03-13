@@ -5,9 +5,9 @@
 
 global:
   # 指标抓取间隔（默认 15 秒）
-  scrape_interval: 15s
+  scrape_interval: 30s
   # 告警规则评估间隔（默认 15 秒）
-  evaluation_interval: 15s
+  evaluation_interval: 30s
 
 # ------------------------------------------------------------
 # 告警管理器配置
