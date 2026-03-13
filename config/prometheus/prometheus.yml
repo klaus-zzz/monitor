@@ -51,6 +51,17 @@ scrape_configs:
     static_configs:
       - targets: ["pushgateway:9091"]
 
+  # Uptime Kuma - 服务可用性监控指标
+  - job_name: "uptime-kuma"
+    scrape_interval: 30s
+    scheme: http
+    metrics_path: '/metrics'
+    basic_auth:
+      username: 'admin'
+      password: 'uptimekuma'
+    static_configs:
+      - targets: ['uptime-kuma:3001']
+
   # Blackbox Exporter - 已由 Uptime Kuma 替代，如需启用请取消注释
   # - job_name: "blackbox-http"
   #   metrics_path: /probe
