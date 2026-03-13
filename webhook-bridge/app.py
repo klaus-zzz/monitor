@@ -2,6 +2,8 @@
 Alertmanager → 飞书 Webhook 转发桥
 接收 Alertmanager 的告警 payload，根据可配置模板渲染飞书卡片消息并发送
 模板文件：/app/template.json（通过 Docker 挂载）
+
+卡片使用飞书 lark_md 格式，支持粗体、颜色、超链接等富文本样式
 """
 import os
 import json
@@ -33,7 +35,7 @@ def load_template():
 def parse_time(time_str):
     """解析 Alertmanager 时间字符串，转为本地时间显示"""
     if not time_str or time_str == "0001-01-01T00:00:00Z":
-        return ""
+        return "0001-01-01 00:00:00"
     try:
         time_str = time_str.split(".")[0].replace("Z", "+00:00")
         if "+" not in time_str and "-" not in time_str[-6:]:
@@ -62,21 +64,26 @@ def render_template(text, variables):
 
 
 def build_links_markdown(tpl_config):
-    """根据模板配置生成快捷链接 Markdown"""
+    """
+    根据模板配置生成快捷链接行，使用 lark_md 格式
+    有 URL 时生成超链接（飞书自动渲染为蓝色），无 URL 时生成粗体文本
+    """
     links_config = tpl_config.get("links", {})
     parts = []
     for key, link in links_config.items():
         url = link.get("url", "")
         text = link.get("text", key)
         if url:
-            parts.append(f"[{text}]({url})")
+            # 粗体超链接（飞书 lark_md 超链接自动为蓝色）
+            parts.append(f"**[{text}]({url})**")
         else:
+            # 粗体文本（未配置 URL）
             parts.append(f"**{text}**")
-    return "  ".join(parts)
+    return "\n".join(parts)
 
 
 def build_card(alert, tpl_config):
-    """将单条告警构建为飞书交互卡片"""
+    """将单条告警构建为飞书交互卡片（lark_md 格式，支持颜色/粗体/超链接）"""
     status = alert.get("status", "unknown")
     labels = alert.get("labels", {})
     annotations = alert.get("annotations", {})
@@ -89,33 +96,52 @@ def build_card(alert, tpl_config):
     variables = {
         "project_name": tpl_config.get("project_name", "监控系统"),
         "alertname": labels.get("alertname", "未知告警"),
+        "summary": annotations.get("summary", labels.get("alertname", "未知告警")),
         "status": status,
         "severity": labels.get("severity", "unknown"),
         "source": get_source(labels),
         "description": annotations.get("description", annotations.get("summary", "无描述")),
         "starts_at": parse_time(alert.get("startsAt", "")),
         "ends_at": parse_time(alert.get("endsAt", "")),
-        "links": build_links_markdown(tpl_config),
     }
 
     # 渲染标题
     header_title = render_template(tpl.get("header_title", status_key), variables)
     header_color = tpl.get("header_color", "blue")
 
-    # 渲染字段内容
+    # 构建卡片内容元素
     elements = []
+
+    # 1. 链接行
+    links_md = build_links_markdown(tpl_config)
+    if links_md:
+        elements.append({"tag": "div", "text": {"tag": "lark_md", "content": links_md}})
+
+    # 2. 模板字段行（合并为一个 div，每行一个字段）
+    field_lines = []
     for field_tpl in tpl.get("fields", []):
         rendered = render_template(field_tpl, variables)
         if rendered.strip():
-            elements.append({
-                "tag": "markdown",
-                "content": rendered
-            })
+            field_lines.append(rendered)
+
+    if field_lines:
+        elements.append({"tag": "div", "text": {"tag": "lark_md", "content": "\n".join(field_lines)}})
+
+    # 3. 分割线
+    elements.append({"tag": "hr"})
+
+    # 4. 底部备注
+    note_text = tpl_config.get("note", "webhook-bridge")
+    elements.append({
+        "tag": "note",
+        "elements": [{"tag": "lark_md", "content": note_text}]
+    })
 
     # 构建飞书交互卡片
     card = {
         "msg_type": "interactive",
         "card": {
+            "config": {"wide_screen_mode": True, "enable_forward": True},
             "header": {
                 "title": {"tag": "plain_text", "content": header_title},
                 "template": header_color

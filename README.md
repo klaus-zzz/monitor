@@ -265,6 +265,8 @@ docker exec alertmanager wget \
 
 告警卡片的样式通过 `config/webhook-bridge/template.json` 配置，修改后无需重建容器，下次告警触发时自动生效（模板文件以只读方式挂载，每次请求重新加载）。
 
+卡片使用飞书 `lark_md` 格式渲染，支持 `**粗体**`、`<font color='red'>颜色文字</font>`、`[超链接](url)` 等富文本样式。
+
 **模板结构说明：**
 
 ```json
@@ -273,24 +275,35 @@ docker exec alertmanager wget \
     "header_color": "red",
     "header_title": "⚠ {{project_name}} 环境异常告警",
     "fields": [
-      "{{links}}",
-      "**告警名称：** {{alertname}}",
+      "**告警名称：** <font color='red'>{{summary}}</font>",
+      "**告警类型：** {{status}}",
       "**告警级别：** {{severity}}",
-      "**告警来源：** {{source}}",
       "**开始时间：** {{starts_at}}",
-      "**故障描述：** {{description}}"
+      "**结束时间：** {{ends_at}}",
+      "**故障位置：** {{source}}",
+      "**故障描述：** <font color='red'>{{description}}</font>"
     ]
   },
   "resolved": {
     "header_color": "green",
     "header_title": "✅ {{project_name}} 环境恢复信息",
-    "fields": ["..."]
+    "fields": [
+      "**告警名称：** <font color='green'>{{summary}}</font>",
+      "**告警类型：** {{status}}",
+      "**告警级别：** {{severity}}",
+      "**开始时间：** {{starts_at}}",
+      "**结束时间：** {{ends_at}}",
+      "**故障位置：** {{source}}",
+      "**恢复故障：** <font color='green'>{{description}}</font>"
+    ]
   },
   "project_name": "监控系统",
   "links": {
-    "grafana": { "text": "Grafana", "url": "http://your-grafana:3000" },
-    "prometheus": { "text": "Prometheus", "url": "http://your-prometheus:9090" }
-  }
+    "grafana": { "text": "grafana", "url": "http://your-grafana:3000" },
+    "alertmanager": { "text": "alertmanager", "url": "http://your-alertmanager:9093" },
+    "prometheus": { "text": "prometheus", "url": "http://your-prometheus:9090" }
+  },
+  "note": "PrometheusAlert"
 }
 ```
 
@@ -298,17 +311,19 @@ docker exec alertmanager wget \
 
 | 变量 | 说明 |
 |------|------|
-| `{{project_name}}` | 项目名称（顶层 `project_name` 字段） |
-| `{{alertname}}` | 告警名称 |
+| `{{project_name}}` | 环境/项目名称（顶层 `project_name` 字段） |
+| `{{alertname}}` | 告警规则名称（英文，来自 labels） |
+| `{{summary}}` | 告警摘要（中文，来自 annotations，回退到 alertname） |
 | `{{status}}` | 告警状态（firing / resolved） |
 | `{{severity}}` | 告警级别 |
 | `{{source}}` | 告警来源（instance 或容器名） |
 | `{{description}}` | 告警描述 |
 | `{{starts_at}}` | 开始时间（已转为东八区） |
-| `{{ends_at}}` | 结束时间（仅恢复告警） |
-| `{{links}}` | 快捷链接（根据 `links` 配置自动生成） |
+| `{{ends_at}}` | 结束时间 |
 
 **卡片颜色可选值：** `blue`、`red`、`orange`、`green`、`purple`、`indigo`、`grey`
+
+**links 配置说明：** 配置了 `url` 的链接会渲染为蓝色可点击超链接，未配置 `url` 的显示为粗体文本。
 
 ### 容器日志占用磁盘空间过大
 
