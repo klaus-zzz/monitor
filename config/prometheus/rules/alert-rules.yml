@@ -13,7 +13,7 @@ groups:
     rules:
 
       # CPU 使用率超过 80% 持续 5 分钟
-      - alert: HostHighCpuUsage
+      - alert: 主机CPU使用率过高
         expr: 100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
         for: 5m
         labels:
@@ -23,7 +23,7 @@ groups:
           description: "主机 {{ $labels.instance }} 的 CPU 使用率已超过 80%，当前值为 {{ $value | printf \"%.1f\" }}%，持续超过 5 分钟。"
 
       # 内存使用率超过 85% 持续 5 分钟
-      - alert: HostHighMemoryUsage
+      - alert: 主机内存使用率过高
         expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 85
         for: 5m
         labels:
@@ -33,7 +33,7 @@ groups:
           description: "主机 {{ $labels.instance }} 的内存使用率已超过 85%，当前值为 {{ $value | printf \"%.1f\" }}%，持续超过 5 分钟。"
 
       # 磁盘使用率超过 85%
-      - alert: HostHighDiskUsage
+      - alert: 主机磁盘使用率过高
         expr: (1 - (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay"})) * 100 > 85
         for: 5m
         labels:
@@ -43,7 +43,7 @@ groups:
           description: "主机 {{ $labels.instance }} 的磁盘挂载点 {{ $labels.mountpoint }} 使用率已超过 85%，当前值为 {{ $value | printf \"%.1f\" }}%。"
 
       # 磁盘 IO 过高（IO 等待时间超过 30%）
-      - alert: HostHighDiskIO
+      - alert: 主机磁盘IO过高
         expr: rate(node_disk_io_time_seconds_total[5m]) * 100 > 30
         for: 5m
         labels:
@@ -59,7 +59,7 @@ groups:
     rules:
 
       # 容器在 10 分钟内重启次数异常（>3 次）
-      - alert: ContainerFrequentRestart
+      - alert: 容器频繁重启
         expr: increase(container_last_seen{name!=""}[10m]) == 0 or rate(container_start_time_seconds{name!=""}[10m]) * 600 > 3
         for: 0m
         labels:
@@ -69,7 +69,7 @@ groups:
           description: "容器 {{ $labels.name }} 在过去 10 分钟内频繁重启，请检查容器日志排查原因。"
 
       # 容器 CPU 使用率过高（超过分配限制的 80%）
-      - alert: ContainerHighCpuUsage
+      - alert: 容器CPU使用率过高
         expr: (sum by(name) (rate(container_cpu_usage_seconds_total{name!=""}[5m]))) * 100 > 80
         for: 5m
         labels:
@@ -79,7 +79,7 @@ groups:
           description: "容器 {{ $labels.name }} 的 CPU 使用率已超过 80%，当前值为 {{ $value | printf \"%.1f\" }}%，持续超过 5 分钟。"
 
       # 容器内存使用率过高（超过限制的 85%）
-      - alert: ContainerHighMemoryUsage
+      - alert: 容器内存使用率过高
         expr: (container_memory_usage_bytes{name!=""} / container_spec_memory_limit_bytes{name!=""}) * 100 > 85
         for: 5m
         labels:
@@ -95,7 +95,7 @@ groups:
     rules:
 
       # 监控目标 down 超过 1 分钟
-      - alert: TargetDown
+      - alert: 监控目标不可达
         expr: up == 0
         for: 1m
         labels:
@@ -111,7 +111,7 @@ groups:
     rules:
 
       # Uptime Kuma 中配置的监控目标异常（状态为 down）
-      - alert: UptimeKumaMonitorDown
+      - alert: Uptime Kuma监控目标异常
         expr: monitor_status == 0
         for: 1m
         labels:
@@ -121,7 +121,7 @@ groups:
           description: "Uptime Kuma 中的监控项「{{ $labels.monitor_name }}」({{ $labels.monitor_url }}) 已处于异常状态，持续超过 1 分钟。请检查目标服务是否正常运行。"
 
       # Uptime Kuma 中配置的监控目标响应过慢（超过 5 秒）
-      - alert: UptimeKumaResponseSlow
+      - alert: Uptime Kuma监控目标响应过慢
         expr: monitor_response_time > 5000
         for: 3m
         labels:
@@ -131,7 +131,7 @@ groups:
           description: "Uptime Kuma 中的监控项「{{ $labels.monitor_name }}」响应时间超过 5 秒，当前值为 {{ $value | printf \"%.0f\" }}ms，持续超过 3 分钟。"
 
       # SSL 证书即将过期（剩余不足 14 天）
-      - alert: UptimeKumaCertExpiringSoon
+      - alert: SSL证书即将过期
         expr: monitor_cert_days_remaining > 0 and monitor_cert_days_remaining < 14
         for: 1h
         labels:
@@ -147,7 +147,7 @@ groups:
     rules:
 
       # Prometheus 配置重载失败
-      - alert: PrometheusConfigReloadFailed
+      - alert: Prometheus配置重载失败
         expr: prometheus_config_last_reload_successful == 0
         for: 5m
         labels:
@@ -157,7 +157,7 @@ groups:
           description: "Prometheus 最近一次配置重载失败，请检查配置文件语法是否正确。"
 
       # Prometheus TSDB 压缩失败
-      - alert: PrometheusTSDBCompactionsFailed
+      - alert: Prometheus TSDB压缩失败
         expr: increase(prometheus_tsdb_compactions_failed_total[1h]) > 0
         for: 0m
         labels:
@@ -167,7 +167,7 @@ groups:
           description: "Prometheus TSDB 在过去 1 小时内出现压缩失败，失败次数增加了 {{ $value }} 次。这可能影响查询性能和存储效率。"
 
       # Prometheus 告警规则评估失败
-      - alert: PrometheusRuleEvaluationFailed
+      - alert: Prometheus告警规则评估失败
         expr: increase(prometheus_rule_evaluation_failures_total[5m]) > 0
         for: 0m
         labels:
