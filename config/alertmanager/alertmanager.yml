@@ -1,7 +1,7 @@
 # ============================================================
 # Alertmanager 配置文件
 # 负责告警去重、分组、路由和通知转发
-# 所有告警统一使用 prometheus-fs 模板通过飞书发送
+# 所有告警通过 webhook-bridge 转发至飞书
 # ============================================================
 
 global:
@@ -13,7 +13,7 @@ route:
   group_wait: 15s
   group_interval: 5m
   repeat_interval: 24h
-  receiver: 'web.hook.prometheusalert'
+  receiver: 'feishu-webhook'
   routes:
     # 静默 info/none 级别告警
     - match:
@@ -27,11 +27,10 @@ route:
 receivers:
   # 静默接收器
   - name: 'null'
-  # 默认接收器 - 所有告警统一通过 PrometheusAlert 转发至飞书
-  # fsurl 参数从 .env 中 PA_FEISHU_URL 获取，部署时按需修改
-  - name: 'web.hook.prometheusalert'
+  # 飞书告警接收器 - 通过 webhook-bridge 转发
+  - name: 'feishu-webhook'
     webhook_configs:
-      - url: 'http://prometheus-alert:8080/prometheusalert?type=fs&tpl=prometheus-fs'
+      - url: 'http://webhook-bridge:5000/webhook'
         send_resolved: true
 
 # 告警抑制规则

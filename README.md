@@ -9,12 +9,12 @@
 │                    Docker Network: monitoring                │
 │                                                              │
 │  ┌──────────┐    ┌──────────────┐    ┌─────────────────┐    │
-│  │Prometheus │───▶│ Alertmanager │───▶│ PrometheusAlert  │    │
-│  │  :9090    │    │   (内部)     │    │     :8080        │    │
+│  │Prometheus │───▶│ Alertmanager │───▶│ Webhook Bridge │    │
+│  │  :9090    │    │   (内部)     │    │    (内部)      │    │
 │  └──┬─┬──┬──┘    └──────────────┘    └────────┬────────┘    │
 │     │ │  │                                     │             │
 │     │ │  │  ┌──────────┐  ┌──────┐            ▼             │
-│     │ │  └──│  Grafana  │──│MySQL │    钉钉/企微/飞书/TG     │
+│     │ │  └──│  Grafana  │──│MySQL │         飞书群           │
 │     │ │     │  :3000    │  │(内部)│                          │
 │     │ │     └─────┬─────┘  └──────┘                          │
 │     │ │           │                                          │
@@ -33,7 +33,7 @@
 |------|------|
 | Prometheus | 指标采集与时序数据存储 |
 | Alertmanager | 告警去重、分组与路由 |
-| PrometheusAlert | 告警转发至钉钉/企微/飞书等国内渠道 |
+| Webhook Bridge | Alertmanager → 飞书告警转发 |
 | Loki | 轻量级日志聚合 |
 | Alloy | Docker 容器日志自动采集 |
 | Grafana | 统一可视化仪表盘（MySQL 后端） |
@@ -77,7 +77,7 @@ GF_SECURITY_ADMIN_PASSWORD=your_strong_password_here
 MYSQL_EXPORTER_DATA_SOURCE_NAME=root:your_strong_password_here@tcp(mysql:3306)/
 ```
 
-如需配置告警通知渠道，填写对应的 `PA_` 前缀变量（详见[环境变量说明](#环境变量说明)）。
+如需配置告警通知渠道，填写 `FEISHU_WEBHOOK_URL`（详见[环境变量说明](#环境变量说明)）。
 
 > **Uptime Kuma 认证说明：** Prometheus 需要抓取 Uptime Kuma 的 `/metrics` 端点获取监控指标。认证信息（用户名/密码）写在 `config/prometheus/prometheus.yml` 的 `uptime-kuma` job 中。如修改了 Uptime Kuma 的登录密码，请同步更新该配置文件中的 `basic_auth` 部分。
 
@@ -99,11 +99,10 @@ docker compose ps
 |------|------|----------|------|
 | Grafana | `http://<宿主机IP>:3000` | 3000 | 用户名 `admin`，密码见 `.env` 中 `GF_SECURITY_ADMIN_PASSWORD` |
 | Prometheus | `http://<宿主机IP>:9090` | 9090 | 指标查询与告警规则管理 |
-| PrometheusAlert | `http://<宿主机IP>:8080` | 8080 | 告警模板管理与通知渠道配置 |
 | Uptime Kuma | `http://<宿主机IP>:3001` | 3001 | 首次访问需创建管理员账户 |
 
 > 以下服务仅在 Docker 内部网络（monitoring）中可访问，不对外暴露：
-> Alertmanager(:9093)、Loki(:3100)、Pushgateway(:9091)、cAdvisor(:8080)、Blackbox Exporter(:9115)、MySQL(:3306)
+> Alertmanager(:9093)、Loki(:3100)、Webhook Bridge(:5000)、Pushgateway(:9091)、cAdvisor(:8080)、Blackbox Exporter(:9115)、MySQL(:3306)
 
 ## 环境变量说明
 
@@ -122,7 +121,6 @@ docker compose ps
 | `NODE_EXPORTER_VERSION` | v1.10.2 | Node Exporter 版本 |
 | `CADVISOR_VERSION` | v0.56.2 | cAdvisor 版本 |
 | `BLACKBOX_EXPORTER_VERSION` | v0.28.0 | Blackbox Exporter 版本 |
-| `PROMETHEUSALERT_VERSION` | v4.9.2 | PrometheusAlert 版本 |
 | `MYSQL_EXPORTER_VERSION` | v0.18.0 | MySQL Exporter 版本（可选组件） |
 
 ### 端口配置
@@ -132,7 +130,6 @@ docker compose ps
 | `GRAFANA_PORT` | 3000 | Grafana Web 端口 |
 | `UPTIME_KUMA_PORT` | 3001 | Uptime Kuma Web 端口 |
 | `PROMETHEUS_PORT` | 9090 | Prometheus Web 端口 |
-| `PROMETHEUSALERT_PORT` | 8080 | PrometheusAlert Web 端口 |
 
 ### 核心配置
 
@@ -144,17 +141,12 @@ docker compose ps
 | `PROMETHEUS_RETENTION_DAYS` | 15d | Prometheus 数据保留时间 |
 | `LOKI_RETENTION_PERIOD` | 720h | Loki 日志保留时间（720h = 30 天） |
 
-### 告警通知渠道（PA_ 前缀）
+### 飞书告警通知
 
 | 变量 | 说明 |
 |------|------|
-| `PA_DINGTALK_URL` | 钉钉机器人 Webhook 地址 |
-| `PA_DINGTALK_SECRET` | 钉钉机器人加签密钥 |
-| `PA_WEIXIN_URL` | 企业微信机器人 Webhook 地址 |
-| `PA_FEISHU_URL` | 飞书机器人 Webhook 地址 |
-| `PA_FEISHU_SECRET` | 飞书机器人加签密钥 |
-| `PA_TG_TOKEN` | Telegram Bot Token |
-| `PA_TG_CHAT_ID` | Telegram Chat ID |
+| `FEISHU_WEBHOOK_URL` | 飞书机器人 Webhook 地址（必填） |
+| `FEISHU_SECRET` | 飞书机器人加签密钥（可选） |
 
 ## 可选组件
 
@@ -285,58 +277,19 @@ docker compose ps loki
 docker compose restart alloy
 ```
 
-### 告警通知未发送到钉钉/企微/飞书
+### 告警通知未发送到飞书
 
 **排查步骤：**
 ```bash
-# 1. 确认 PrometheusAlert 运行正常
-docker compose ps prometheus-alert
+# 1. 确认 webhook-bridge 运行正常
+docker compose ps webhook-bridge
 
-# 2. 检查 .env 中 PA_ 前缀的变量是否正确配置
-# 3. 查看 PrometheusAlert 日志
-docker compose logs prometheus-alert
+# 2. 检查 .env 中 FEISHU_WEBHOOK_URL 是否正确配置
 
-# 4. 访问 PrometheusAlert Web 界面测试通知
-#    http://<宿主机IP>:8080
-```
+# 3. 查看 webhook-bridge 日志
+docker compose logs webhook-bridge
 
-### 配置飞书告警模板
-
-首次部署后，需要在 PrometheusAlert Web 界面手动配置飞书告警模板，否则告警消息无法正确发送到飞书群。
-
-**操作步骤：**
-
-1. 访问 PrometheusAlert Web 界面：`http://<宿主机IP>:8080`
-2. 进入 **模板管理** → **自定义模板**
-3. 找到名为 `prometheus-fs` 的模板（类型：飞书，用途：Prometheus），点击编辑
-4. 将模板内容替换为以下内容，保存即可
-
-**飞书告警模板（兼容 Prometheus 和 Loki 告警）：**
-
-```
-{{ $var := .externalURL}}{{ range $k,$v:=.alerts }}{{if eq $v.status "resolved"}}<font color="green">**✅ 环境恢复信息**</font>
-**告警名称：**{{$v.labels.alertname}}
-**告警类型：**{{$v.status}}
-**告警级别：**{{$v.labels.severity}}
-**告警来源：**{{if $v.labels.instance}}{{$v.labels.instance}}{{else if $v.labels.container}}容器: {{$v.labels.container}}{{else}}未知{{end}}
-**开始时间：**{{TimeFormat $v.startsAt "2006-01-02 15:04:05"}}
-**结束时间：**{{TimeFormat $v.endsAt "2006-01-02 15:04:05"}}
-**恢复详情：**<font color="green">{{$v.annotations.description}}</font>{{else}}<font color="red">**⚠ 环境异常告警**</font>
-**告警名称：**{{$v.labels.alertname}}
-**告警类型：**{{$v.status}}
-**告警级别：**{{$v.labels.severity}}
-**告警来源：**{{if $v.labels.instance}}{{$v.labels.instance}}{{else if $v.labels.container}}容器: {{$v.labels.container}}{{else}}未知{{end}}
-**开始时间：**{{TimeFormat $v.startsAt "2006-01-02 15:04:05"}}
-**故障描述：**<font color="red">{{$v.annotations.description}}</font>{{end}}{{ end }}
-{{ $urimsg:=""}}{{ range $key,$value:=.commonLabels }}{{$urimsg = print $urimsg $key "%3D%22" $value "%22%2C" }}{{end}}[点我屏蔽该告警]({{$var}}/#/silences/new?filter=%7B{{SplitString $urimsg 0 -3}}%7D)
-```
-
-> **说明：** 该模板同时兼容 Prometheus 指标告警（显示 `instance`）和 Loki 日志告警（显示 `container`）。模板内容也保存在 `config/prometheus-alert/templates.json` 中供参考。
-
-**验证告警链路：**
-
-```bash
-# 向 Alertmanager 发送测试告警
+# 4. 手动发送测试告警
 curl -X POST http://localhost:9093/api/v2/alerts \
   -H "Content-Type: application/json" \
   -d '[{
@@ -415,6 +368,10 @@ monitor/
 │       └── provisioning/
 │           └── datasources/
 │               └── datasources.yml       # Grafana 数据源自动配置
+├── webhook-bridge/                       # Alertmanager → 飞书转发服务
+│   ├── app.py                            # 转发逻辑
+│   ├── requirements.txt
+│   └── Dockerfile
 └── data/                                 # 持久化数据目录（自动创建，不纳入版本控制）
     ├── prometheus/
     ├── alertmanager/
