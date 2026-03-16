@@ -35,7 +35,6 @@ graph TD
 | Uptime Kuma | 服务可用性与正常运行时间监控（Prometheus 抓取其 /metrics 指标） |
 | Node Exporter | 宿主机系统指标采集 |
 | cAdvisor | 容器资源使用指标采集 |
-| Blackbox Exporter | HTTP/TCP/ICMP 黑盒探测 |
 | Pushgateway | 短生命周期任务指标推送 |
 
 ## 前置要求
@@ -94,7 +93,7 @@ docker compose ps
 | Loki | `http://<宿主机IP>:3100` | 3100 | 日志推送端口，供远程 Alloy 推送日志 |
 
 > 以下服务仅在 Docker 内部网络（monitoring）中可访问，不对外暴露：
-> Alertmanager(:9093)、Webhook Bridge(:5000)、Pushgateway(:9091)、cAdvisor(:8080)、Blackbox Exporter(:9115)、MySQL(:3306)
+> Alertmanager(:9093)、Webhook Bridge(:5000)、Pushgateway(:9091)、cAdvisor(:8080)、MySQL(:3306)
 
 ## 环境变量说明
 
@@ -112,8 +111,6 @@ docker compose ps
 | `PUSHGATEWAY_VERSION` | v1.11.2 | Pushgateway 版本 |
 | `NODE_EXPORTER_VERSION` | v1.10.2 | Node Exporter 版本 |
 | `CADVISOR_VERSION` | v0.56.2 | cAdvisor 版本 |
-| `BLACKBOX_EXPORTER_VERSION` | v0.28.0 | Blackbox Exporter 版本 |
-
 ### 端口配置
 
 | 变量 | 默认值 | 说明 |
@@ -385,8 +382,6 @@ monitor/
 │   │   └── rules/                        # Loki 告警规则
 │   ├── alloy/
 │   │   └── config.alloy                  # Alloy 采集配置（River 语法）
-│   ├── blackbox/
-│   │   └── blackbox.yml                  # Blackbox Exporter 探测模块配置
 │   ├── webhook-bridge/
 │   │   └── template.json                # 飞书告警卡片模板（可自定义）
 │   └── grafana/
@@ -437,12 +432,12 @@ monitor/
      │  节点 A    │  │  节点 B    │
      │ NodeExp   │  │ NodeExp   │
      │ cAdvisor  │  │ cAdvisor  │
-     │ Alloy(可选)│  │ Alloy(可选)│
+     │ Alloy     │  │ Alloy     │
      └───────────┘  └───────────┘
 ```
 
 - 主节点：运行完整的 `docker-compose.yml`，负责存储、可视化、告警
-- 被监控节点：只需部署轻量采集组件
+- 被监控节点：部署 Node Exporter + cAdvisor + Alloy 三个采集组件
 
 ### 被监控节点部署
 
@@ -453,7 +448,7 @@ monitor/
 在被监控节点上创建 `docker-compose.yml`：
 
 ```yaml
-# 被监控节点 - 指标采集组件
+# 被监控节点 - 指标与日志采集组件
 x-logging: &default-logging
   driver: json-file
   options:
@@ -517,21 +512,8 @@ services:
         limits:
           memory: 512M
           cpus: "0.5"
-```
 
-#### 2. 启动采集组件
-
-```bash
-docker compose up -d
-```
-
-#### 3.（可选）部署 Alloy 采集远程日志
-
-如果需要将被监控节点的容器日志也推送到主节点的 Loki，额外部署 Alloy：
-
-在被监控节点的 `docker-compose.yml` 中追加：
-
-```yaml
+  # Alloy - 容器日志采集，推送到主节点 Loki
   alloy:
     image: grafana/alloy:v1.14.0
     container_name: alloy
@@ -553,7 +535,9 @@ docker compose up -d
           cpus: "0.5"
 ```
 
-同时创建 `config.alloy` 文件，内容与主节点的 `config/alloy/config.alloy` 基本一致，只需修改 Loki 推送地址：
+#### 2. 创建 Alloy 配置文件
+
+创建 `config.alloy` 文件，内容与主节点的 `config/alloy/config.alloy` 基本一致，只需修改 Loki 推送地址指向主节点：
 
 ```alloy
 // 将最后的 loki.write 部分改为主节点地址
@@ -566,31 +550,36 @@ loki.write "loki" {
 
 > Loki 默认已对外暴露 3100 端口（通过 `LOKI_PORT` 环境变量控制），远程 Alloy 可直接推送。如果仅单机部署不需要远程日志采集，可在 `.env` 中注释掉 `LOKI_PORT` 或通过防火墙限制访问。
 
+#### 3. 启动采集组件
+
+```bash
+docker compose up -d
+```
+
 ### 主节点配置远程抓取目标
 
-在主节点的 `config/prometheus/prometheus.yml` 中添加被监控节点的抓取目标：
+在主节点的 `config/prometheus/prometheus.yml` 中，直接在已有的 `node-exporter` 和 `cadvisor` job 的 `targets` 中追加远程节点地址：
 
 ```yaml
-scrape_configs:
-  # ... 已有配置 ...
-
-  # 远程节点 - Node Exporter
-  - job_name: "node-exporter-remote"
+  # Node Exporter - 宿主机系统指标
+  - job_name: "node-exporter"
     static_configs:
-      - targets: ["192.168.1.101:9100"]
+      - targets: ["node-exporter:9100"]  # 本机
+      - targets: ["192.168.1.101:9100"]  # 远程节点 A
         labels:
           host: "node-a"
-      - targets: ["192.168.1.102:9100"]
+      - targets: ["192.168.1.102:9100"]  # 远程节点 B
         labels:
           host: "node-b"
 
-  # 远程节点 - cAdvisor
-  - job_name: "cadvisor-remote"
+  # cAdvisor - 容器资源指标
+  - job_name: "cadvisor"
     static_configs:
-      - targets: ["192.168.1.101:8080"]
+      - targets: ["cadvisor:8080"]       # 本机
+      - targets: ["192.168.1.101:8080"]  # 远程节点 A
         labels:
           host: "node-a"
-      - targets: ["192.168.1.102:8080"]
+      - targets: ["192.168.1.102:8080"]  # 远程节点 B
         labels:
           host: "node-b"
 ```
@@ -607,7 +596,7 @@ curl -X POST http://localhost:9090/-/reload
 |------|------|------|------|
 | 主节点 → 被监控节点 | 9100 | TCP | Prometheus 拉取 Node Exporter 指标 |
 | 主节点 → 被监控节点 | 8080 | TCP | Prometheus 拉取 cAdvisor 指标 |
-| 被监控节点 → 主节点 | 3100 | TCP | Alloy 推送日志到 Loki（仅部署 Alloy 时需要） |
+| 被监控节点 → 主节点 | 3100 | TCP | Alloy 推送日志到 Loki |
 
 安全建议：
 
@@ -620,7 +609,7 @@ curl -X POST http://localhost:9090/-/reload
 
 ```bash
 # 1. 在主节点上检查 Prometheus targets 状态
-curl -s http://localhost:9090/api/v1/targets | python3 -m json.tool | grep -A5 "node-exporter-remote"
+curl -s http://localhost:9090/api/v1/targets | python3 -m json.tool | grep -A5 "node-exporter"
 
 # 2. 或直接访问 Prometheus Web UI
 #    http://<主节点IP>:9090/targets
@@ -628,7 +617,7 @@ curl -s http://localhost:9090/api/v1/targets | python3 -m json.tool | grep -A5 "
 
 # 3. 验证 Grafana 中能查到远程节点数据
 #    在 Grafana Explore 中执行 PromQL：
-#    node_uname_info{job="node-exporter-remote"}
+#    node_uname_info{host="node-a"}
 ```
 
 ## 国内镜像加速
