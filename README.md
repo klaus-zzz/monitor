@@ -91,9 +91,10 @@ docker compose ps
 | Grafana | `http://<宿主机IP>:3000` | 3000 | 用户名 `admin`，密码见 `.env` 中 `GF_SECURITY_ADMIN_PASSWORD` |
 | Prometheus | `http://<宿主机IP>:9090` | 9090 | 指标查询与告警规则管理 |
 | Uptime Kuma | `http://<宿主机IP>:3001` | 3001 | 首次访问需创建管理员账户 |
+| Loki | `http://<宿主机IP>:3100` | 3100 | 日志推送端口，供远程 Alloy 推送日志 |
 
 > 以下服务仅在 Docker 内部网络（monitoring）中可访问，不对外暴露：
-> Alertmanager(:9093)、Loki(:3100)、Webhook Bridge(:5000)、Pushgateway(:9091)、cAdvisor(:8080)、Blackbox Exporter(:9115)、MySQL(:3306)
+> Alertmanager(:9093)、Webhook Bridge(:5000)、Pushgateway(:9091)、cAdvisor(:8080)、Blackbox Exporter(:9115)、MySQL(:3306)
 
 ## 环境变量说明
 
@@ -120,6 +121,7 @@ docker compose ps
 | `GRAFANA_PORT` | 3000 | Grafana Web 端口 |
 | `UPTIME_KUMA_PORT` | 3001 | Uptime Kuma Web 端口 |
 | `PROMETHEUS_PORT` | 9090 | Prometheus Web 端口 |
+| `LOKI_PORT` | 3100 | Loki 日志推送端口（供远程 Alloy 推送日志） |
 
 ### 核心配置
 
@@ -417,6 +419,228 @@ monitor/
 - `alertmanager.yml` — 通过 `amtool check-config` 验证
 
 > 脚本通过 Docker 镜像运行 `promtool` 和 `amtool`，无需在宿主机上额外安装这些工具。
+
+## 多节点部署
+
+本项目默认以单机模式运行所有组件。在生产环境中，通常需要监控多台服务器，此时需要在被监控节点上部署采集组件，将指标和日志汇报给主节点。
+
+### 架构说明
+
+```
+┌─────────────────────────────────────────┐
+│              主节点（本项目）               │
+│  Prometheus / Loki / Grafana / ...      │
+│  ← 拉取指标（pull）  ← 接收日志（push）    │
+└──────────┬──────────────┬───────────────┘
+           │              │
+     ┌─────┴─────┐  ┌────┴──────┐
+     │  节点 A    │  │  节点 B    │
+     │ NodeExp   │  │ NodeExp   │
+     │ cAdvisor  │  │ cAdvisor  │
+     │ Alloy(可选)│  │ Alloy(可选)│
+     └───────────┘  └───────────┘
+```
+
+- 主节点：运行完整的 `docker-compose.yml`，负责存储、可视化、告警
+- 被监控节点：只需部署轻量采集组件
+
+### 被监控节点部署
+
+在每台被监控服务器上创建目录并部署以下组件。
+
+#### 1. 创建 docker-compose 文件
+
+在被监控节点上创建 `docker-compose.yml`：
+
+```yaml
+# 被监控节点 - 指标采集组件
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  # Node Exporter - 宿主机系统指标
+  node-exporter:
+    image: prom/node-exporter:v1.10.2
+    container_name: node-exporter
+    restart: unless-stopped
+    pid: host
+    ports:
+      - "9100:9100"  # 需要对主节点暴露
+    command:
+      - "--path.rootfs=/host"
+      - "--path.procfs=/host/proc"
+      - "--path.sysfs=/host/sys"
+      - "--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($|/)"
+      - "--collector.disable-defaults"
+      - "--collector.cpu"
+      - "--collector.meminfo"
+      - "--collector.filesystem"
+      - "--collector.diskstats"
+      - "--collector.netdev"
+      - "--collector.loadavg"
+      - "--collector.uname"
+      - "--collector.time"
+      - "--collector.stat"
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/host:ro,rslave
+      - /run/udev/data:/run/udev/data:ro
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.5"
+
+  # cAdvisor - 容器资源指标
+  cadvisor:
+    image: ghcr.io/google/cadvisor:0.56.2
+    container_name: cadvisor
+    restart: unless-stopped
+    privileged: true
+    ports:
+      - "8080:8080"  # 需要对主节点暴露
+    command:
+      - "--docker_only=true"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /sys:/sys:ro
+      - /var/lib/docker:/var/lib/docker:ro
+      - /dev/disk:/dev/disk:ro
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "0.5"
+```
+
+#### 2. 启动采集组件
+
+```bash
+docker compose up -d
+```
+
+#### 3.（可选）部署 Alloy 采集远程日志
+
+如果需要将被监控节点的容器日志也推送到主节点的 Loki，额外部署 Alloy：
+
+在被监控节点的 `docker-compose.yml` 中追加：
+
+```yaml
+  alloy:
+    image: grafana/alloy:v1.14.0
+    container_name: alloy
+    restart: unless-stopped
+    command:
+      - "run"
+      - "/etc/alloy/config.alloy"
+      - "--server.http.listen-addr=0.0.0.0:12345"
+    environment:
+      LOG_DROP_OLDER_THAN: "166h"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./config.alloy:/etc/alloy/config.alloy:ro
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "0.5"
+```
+
+同时创建 `config.alloy` 文件，内容与主节点的 `config/alloy/config.alloy` 基本一致，只需修改 Loki 推送地址：
+
+```alloy
+// 将最后的 loki.write 部分改为主节点地址
+loki.write "loki" {
+  endpoint {
+    url = "http://<主节点IP>:3100/loki/api/v1/push"
+  }
+}
+```
+
+> Loki 默认已对外暴露 3100 端口（通过 `LOKI_PORT` 环境变量控制），远程 Alloy 可直接推送。如果仅单机部署不需要远程日志采集，可在 `.env` 中注释掉 `LOKI_PORT` 或通过防火墙限制访问。
+
+### 主节点配置远程抓取目标
+
+在主节点的 `config/prometheus/prometheus.yml` 中添加被监控节点的抓取目标：
+
+```yaml
+scrape_configs:
+  # ... 已有配置 ...
+
+  # 远程节点 - Node Exporter
+  - job_name: "node-exporter-remote"
+    static_configs:
+      - targets: ["192.168.1.101:9100"]
+        labels:
+          host: "node-a"
+      - targets: ["192.168.1.102:9100"]
+        labels:
+          host: "node-b"
+
+  # 远程节点 - cAdvisor
+  - job_name: "cadvisor-remote"
+    static_configs:
+      - targets: ["192.168.1.101:8080"]
+        labels:
+          host: "node-a"
+      - targets: ["192.168.1.102:8080"]
+        labels:
+          host: "node-b"
+```
+
+添加完成后热重载 Prometheus 配置：
+
+```bash
+curl -X POST http://localhost:9090/-/reload
+```
+
+### 网络与安全注意事项
+
+| 方向 | 端口 | 协议 | 说明 |
+|------|------|------|------|
+| 主节点 → 被监控节点 | 9100 | TCP | Prometheus 拉取 Node Exporter 指标 |
+| 主节点 → 被监控节点 | 8080 | TCP | Prometheus 拉取 cAdvisor 指标 |
+| 被监控节点 → 主节点 | 3100 | TCP | Alloy 推送日志到 Loki（仅部署 Alloy 时需要） |
+
+安全建议：
+
+- 上述端口仅在内网开放，不要暴露到公网
+- 如果节点跨网段，建议通过 VPN 或 WireGuard 打通内网
+- 生产环境可为 Node Exporter 和 cAdvisor 配置 TLS 和 Basic Auth，参考各组件官方文档
+- 如果不希望在被监控节点暴露端口，可以改用 Prometheus 的 `remote_write` 模式（被监控节点部署独立 Prometheus 主动推送指标到主节点）
+
+### 验证远程节点接入
+
+```bash
+# 1. 在主节点上检查 Prometheus targets 状态
+curl -s http://localhost:9090/api/v1/targets | python3 -m json.tool | grep -A5 "node-exporter-remote"
+
+# 2. 或直接访问 Prometheus Web UI
+#    http://<主节点IP>:9090/targets
+#    确认远程节点状态为 UP
+
+# 3. 验证 Grafana 中能查到远程节点数据
+#    在 Grafana Explore 中执行 PromQL：
+#    node_uname_info{job="node-exporter-remote"}
+```
+
+## 国内镜像加速
+
+项目提供了 `docker-compose.cn.yml`，将所有镜像替换为国内加速源（`docker.1ms.run` / `ghcr.1ms.run`），适用于国内服务器拉取镜像缓慢的场景：
+
+```bash
+# 使用国内镜像启动
+docker compose -f docker-compose.cn.yml up -d
+```
+
+> 被监控节点同理，将 `docker-compose.yml` 中的镜像地址替换为对应的加速地址即可。
 
 ## 常用运维命令
 

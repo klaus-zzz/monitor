@@ -166,6 +166,8 @@ services:
     <<: *default-restart
     # 以 root 用户运行，避免挂载目录权限问题
     user: "0"
+    ports:
+      - "${LOKI_PORT:-3100}:3100"
     command:
       - "-config.file=/etc/loki/loki-config.yml"
     environment:
