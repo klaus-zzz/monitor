@@ -126,34 +126,26 @@ services:
           cpus: "0.5"
 
   # ==========================================================
-  # PrometheusAlert - 告警消息转发（钉钉/企微/飞书等）
-  # 对外暴露端口 8080
+  # Webhook Bridge - Alertmanager → 飞书告警转发
+  # 仅内部网络可访问，不对外暴露端口
   # ==========================================================
-  prometheus-alert:
-    image: docker.1ms.run/feiyu563/prometheus-alert:${PROMETHEUSALERT_VERSION:-v4.9.2}
-    container_name: prometheus-alert
+  webhook-bridge:
+    image: docker.1ms.run/iruiiii/webhook-bridge:latest
+    # 本地构建（取消注释以下两行，注释上面的 image）
+    # build: ./webhook-bridge
+    # image: webhook-bridge:latest
+    container_name: webhook-bridge
     <<: *default-restart
-    ports:
-      - "${PROMETHEUSALERT_PORT:-8080}:8080"
     environment:
-      # 钉钉机器人配置
-      PA_DINGTALK_URL: ${PA_DINGTALK_URL:-}
-      PA_DINGTALK_SECRET: ${PA_DINGTALK_SECRET:-}
-      # 企业微信机器人配置
-      PA_WEIXIN_URL: ${PA_WEIXIN_URL:-}
-      # 飞书机器人配置
-      PA_FEISHU_URL: ${PA_FEISHU_URL:-}
-      PA_FEISHU_SECRET: ${PA_FEISHU_SECRET:-}
-      # Telegram 配置
-      PA_TG_TOKEN: ${PA_TG_TOKEN:-}
-      PA_TG_CHAT_ID: ${PA_TG_CHAT_ID:-}
-      TZ: ${TZ:-Asia/Shanghai}
+      FEISHU_WEBHOOK_URL: ${FEISHU_WEBHOOK_URL:-}
+      FEISHU_SECRET: ${FEISHU_SECRET:-}
+      TZ_OFFSET: "8"
     volumes:
-      - ./data/prometheus-alert:/app/db
+      - ./config/webhook-bridge/template.json:/app/template.json:ro
     networks:
       - monitoring
     healthcheck:
-      test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://localhost:8080/health || exit 1"]
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:5000/health')\" || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 3
@@ -162,8 +154,8 @@ services:
     deploy:
       resources:
         limits:
-          memory: 256M
-          cpus: "0.5"
+          memory: 128M
+          cpus: "0.25"
 
   # ==========================================================
   # Loki - 日志聚合系统
@@ -213,7 +205,6 @@ services:
       - "/etc/alloy/config.alloy"
       - "--server.http.listen-addr=0.0.0.0:12345"
     environment:
-      # Alloy 丢弃超过此时间的旧日志，需小于 Loki 的 reject_old_samples_max_age(168h)
       LOG_DROP_OLDER_THAN: ${LOG_DROP_OLDER_THAN:-166h}
       TZ: ${TZ:-Asia/Shanghai}
     volumes:
@@ -363,7 +354,7 @@ services:
       - "--path.rootfs=/host"
       - "--path.procfs=/host/proc"
       - "--path.sysfs=/host/sys"
-      - "--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($|/)"
+      - "--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)"
       # 禁用所有默认 collector，只启用核心指标
       - "--collector.disable-defaults"
       - "--collector.cpu"
@@ -455,8 +446,6 @@ services:
   #       limits:
   #         memory: 128M
   #         cpus: "0.25"
-
-
 
 # ============================================================
 # 网络定义
