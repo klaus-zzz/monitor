@@ -14,13 +14,13 @@ groups:
 
       # CPU 使用率超过 80% 持续 5 分钟
       - alert: 主机CPU使用率过高
-        expr: 100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+        expr: 100 - (avg by(instance, host) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
         for: 5m
         labels:
           severity: warning
         annotations:
-          summary: "主机 CPU 使用率过高 (实例: {{ $labels.instance }})"
-          description: "主机 {{ $labels.instance }} 的 CPU 使用率已超过 80%，当前值为 {{ $value | printf \"%.1f\" }}%，持续超过 5 分钟。"
+          summary: "主机 CPU 使用率过高 ({{ $labels.host }})"
+          description: "主机 {{ $labels.host }}({{ $labels.instance }}) 的 CPU 使用率已超过 80%，当前值为 {{ $value | printf \"%.1f\" }}%，持续超过 5 分钟。"
 
       # 内存使用率超过 85% 持续 5 分钟
       - alert: 主机内存使用率过高
@@ -29,8 +29,8 @@ groups:
         labels:
           severity: warning
         annotations:
-          summary: "主机内存使用率过高 (实例: {{ $labels.instance }})"
-          description: "主机 {{ $labels.instance }} 的内存使用率已超过 85%，当前值为 {{ $value | printf \"%.1f\" }}%，持续超过 5 分钟。"
+          summary: "主机内存使用率过高 ({{ $labels.host }})"
+          description: "主机 {{ $labels.host }}({{ $labels.instance }}) 的内存使用率已超过 85%，当前值为 {{ $value | printf \"%.1f\" }}%，持续超过 5 分钟。"
 
       # 磁盘使用率超过 85%
       # 排除 size 为 0 的文件系统，避免除以 0
@@ -42,8 +42,8 @@ groups:
         labels:
           severity: critical
         annotations:
-          summary: "主机磁盘使用率过高 (实例: {{ $labels.instance }})"
-          description: "主机 {{ $labels.instance }} 的磁盘挂载点 {{ $labels.mountpoint }} 使用率已超过 85%，当前值为 {{ $value | printf \"%.1f\" }}%。"
+          summary: "主机磁盘使用率过高 ({{ $labels.host }})"
+          description: "主机 {{ $labels.host }}({{ $labels.instance }}) 的磁盘挂载点 {{ $labels.mountpoint }} 使用率已超过 85%，当前值为 {{ $value | printf \"%.1f\" }}%。"
 
       # 磁盘 IO 过高（IO 等待时间超过 30%）
       - alert: 主机磁盘IO过高
@@ -52,8 +52,8 @@ groups:
         labels:
           severity: warning
         annotations:
-          summary: "主机磁盘 IO 过高 (实例: {{ $labels.instance }})"
-          description: "主机 {{ $labels.instance }} 的磁盘 {{ $labels.device }} IO 利用率过高，当前值为 {{ $value | printf \"%.1f\" }}%，持续超过 5 分钟。"
+          summary: "主机磁盘 IO 过高 ({{ $labels.host }})"
+          description: "主机 {{ $labels.host }}({{ $labels.instance }}) 的磁盘 {{ $labels.device }} IO 利用率过高，当前值为 {{ $value | printf \"%.1f\" }}%，持续超过 5 分钟。"
 
   # ==========================================================
   # 容器级告警规则
@@ -109,8 +109,8 @@ groups:
         labels:
           severity: critical
         annotations:
-          summary: "监控目标不可达 (实例: {{ $labels.instance }})"
-          description: "Prometheus 抓取目标 {{ $labels.job }}/{{ $labels.instance }} 已不可达，持续超过 1 分钟。请检查目标服务是否正常运行。"
+          summary: "监控目标不可达 ({{ $labels.host | default $labels.instance }})"
+          description: "Prometheus 抓取目标 {{ $labels.job }}/{{ $labels.instance }}{{ if $labels.host }}({{ $labels.host }}){{ end }} 已不可达，持续超过 1 分钟。请检查目标服务是否正常运行。"
 
   # ==========================================================
   # Uptime Kuma 告警规则

@@ -565,6 +565,8 @@ docker compose up -d
   - job_name: "node-exporter"
     static_configs:
       - targets: ["node-exporter:9100"]  # 本机
+        labels:
+          host: "master"
       - targets: ["192.168.1.101:9100"]  # 远程节点 A
         labels:
           host: "node-a"
@@ -576,6 +578,8 @@ docker compose up -d
   - job_name: "cadvisor"
     static_configs:
       - targets: ["cadvisor:8080"]       # 本机
+        labels:
+          host: "master"
       - targets: ["192.168.1.101:8080"]  # 远程节点 A
         labels:
           host: "node-a"
