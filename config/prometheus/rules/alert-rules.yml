@@ -33,8 +33,11 @@ groups:
           description: "主机 {{ $labels.instance }} 的内存使用率已超过 85%，当前值为 {{ $value | printf \"%.1f\" }}%，持续超过 5 分钟。"
 
       # 磁盘使用率超过 85%
+      # 排除 size 为 0 的文件系统，避免除以 0
       - alert: 主机磁盘使用率过高
-        expr: (1 - (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay"})) * 100 > 85
+        expr: |
+          (1 - (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay"})) * 100 > 85
+          and node_filesystem_size_bytes{fstype!~"tmpfs|overlay"} > 0
         for: 5m
         labels:
           severity: critical
@@ -59,28 +62,33 @@ groups:
     rules:
 
       # 容器在 10 分钟内重启次数异常（>3 次）
+      # 通过 changes() 检测 container_start_time_seconds 的变化次数来判断重启
       - alert: 容器频繁重启
-        expr: increase(container_last_seen{name!=""}[10m]) == 0 or rate(container_start_time_seconds{name!=""}[10m]) * 600 > 3
+        expr: changes(container_start_time_seconds{name!=""}[10m]) > 3
         for: 0m
         labels:
           severity: critical
         annotations:
           summary: "容器频繁重启 (容器: {{ $labels.name }})"
-          description: "容器 {{ $labels.name }} 在过去 10 分钟内频繁重启，请检查容器日志排查原因。"
+          description: "容器 {{ $labels.name }} 在过去 10 分钟内重启了 {{ $value }} 次，请检查容器日志排查原因。"
 
-      # 容器 CPU 使用率过高（超过分配限制的 80%）
+      # 容器 CPU 使用率过高（单容器使用超过 1 核 CPU 持续 5 分钟）
+      # rate 返回值单位为"核"，1.0 = 1 核跑满
       - alert: 容器CPU使用率过高
-        expr: (sum by(name) (rate(container_cpu_usage_seconds_total{name!=""}[5m]))) * 100 > 80
+        expr: sum by(name) (rate(container_cpu_usage_seconds_total{name!=""}[5m])) > 0.8
         for: 5m
         labels:
           severity: warning
         annotations:
           summary: "容器 CPU 使用率过高 (容器: {{ $labels.name }})"
-          description: "容器 {{ $labels.name }} 的 CPU 使用率已超过 80%，当前值为 {{ $value | printf \"%.1f\" }}%，持续超过 5 分钟。"
+          description: "容器 {{ $labels.name }} 的 CPU 使用率已超过 0.8 核，当前值为 {{ $value | printf \"%.2f\" }} 核，持续超过 5 分钟。"
 
       # 容器内存使用率过高（超过限制的 85%）
+      # 仅对设置了内存 limit 的容器生效（limit > 0），未设置 limit 的容器不触发
       - alert: 容器内存使用率过高
-        expr: (container_memory_usage_bytes{name!=""} / container_spec_memory_limit_bytes{name!=""}) * 100 > 85
+        expr: |
+          (container_memory_usage_bytes{name!=""} / container_spec_memory_limit_bytes{name!=""}) * 100 > 85
+          and container_spec_memory_limit_bytes{name!=""} > 0
         for: 5m
         labels:
           severity: warning
