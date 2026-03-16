@@ -47,6 +47,14 @@ limits_config:
   ingestion_burst_size_mb: 20
   max_streams_per_user: 10000
   max_entries_limit_per_query: 5000
+  # 拒绝过旧的日志样本（显式启用）
+  reject_old_samples: true
+  # 接受最多 336h（14天）前的日志，与 Alloy 的 stage.drop 166h 配合
+  # 预留充足缓冲，避免边界时间戳被误拒
+  reject_old_samples_max_age: 336h
+  # 允许乱序写入：多节点 Alloy 重启后可能重新发送历史日志
+  # 导致同一 stream 内出现时间戳倒退，必须启用乱序支持
+  unordered_writes: true
   # 日志保留期限（默认 30 天 = 720h）
   retention_period: 720h
 
